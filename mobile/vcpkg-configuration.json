@@ -1,0 +1,9 @@
+{
+  "default-registry": {
+    "kind": "builtin",
+    "baseline": "ee6a47dac031930715bea2e6dfb9ad60caaa5d83"
+  },
+  "overlay-ports": [
+    "../LongMarch/vcpkg/ports"
+  ]
+}

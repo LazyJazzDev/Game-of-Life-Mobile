@@ -1,0 +1,4 @@
+[submodule "LongMarch"]
+	path = LongMarch
+	url = https://github.com/LazyJazzDev/LongMarch.git
+	branch = mobile-app-base

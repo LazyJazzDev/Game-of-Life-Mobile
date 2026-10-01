@@ -1,0 +1,136 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Conway’s Game of Life"
+    },
+    {
+      "name": "grid_width",
+      "value": "Grid width"
+    },
+    {
+      "name": "grid_height",
+      "value": "Grid height"
+    },
+    {
+      "name": "done",
+      "value": "Done"
+    },
+    {
+      "name": "delete",
+      "value": "Delete"
+    },
+    {
+      "name": "file_name",
+      "value": "File name"
+    },
+    {
+      "name": "save",
+      "value": "Save"
+    },
+    {
+      "name": "cancel",
+      "value": "Cancel"
+    },
+    {
+      "name": "replace",
+      "value": "Replace"
+    },
+    {
+      "name": "replace_pattern",
+      "value": "Replace Pattern?"
+    },
+    {
+      "name": "replace_exists",
+      "value": "“%s” already exists. Do you want to replace it?"
+    },
+    {
+      "name": "enter_file_name",
+      "value": "Enter a file name."
+    },
+    {
+      "name": "save_pattern",
+      "value": "Save Pattern"
+    },
+    {
+      "name": "open_pattern",
+      "value": "Open Pattern"
+    },
+    {
+      "name": "my_patterns",
+      "value": "My Patterns"
+    },
+    {
+      "name": "all_folders",
+      "value": "All Folders"
+    },
+    {
+      "name": "search_in_folder",
+      "value": "Search in “%s”"
+    },
+    {
+      "name": "search_all",
+      "value": "Search all patterns"
+    },
+    {
+      "name": "save_to_files",
+      "value": "Save to Files…"
+    },
+    {
+      "name": "open_from_files",
+      "value": "Open from Files…"
+    },
+    {
+      "name": "lexicon_credit",
+      "value": "Built-in patterns are adapted from the Life Lexicon by Stephen A. Silver et al. and licensed under CC BY-SA 3.0 (https://creativecommons.org/licenses/by-sa/3.0/)."
+    },
+    {
+      "name": "category_still",
+      "value": "Still lifes"
+    },
+    {
+      "name": "category_oscillator",
+      "value": "Oscillators"
+    },
+    {
+      "name": "category_spaceship",
+      "value": "Spaceships"
+    },
+    {
+      "name": "category_gun",
+      "value": "Guns"
+    },
+    {
+      "name": "category_puffer",
+      "value": "Puffers and rakes"
+    },
+    {
+      "name": "category_methuselah",
+      "value": "Methuselahs"
+    },
+    {
+      "name": "category_other",
+      "value": "Other structures"
+    },
+    {
+      "name": "direction_diagonal",
+      "value": "diagonal"
+    },
+    {
+      "name": "direction_orthogonal",
+      "value": "orthogonal"
+    },
+    {
+      "name": "direction_oblique",
+      "value": "oblique"
+    },
+    {
+      "name": "game_error",
+      "value": "Game error"
+    },
+    {
+      "name": "ok",
+      "value": "OK"
+    }
+  ]
+}

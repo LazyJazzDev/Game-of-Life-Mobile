@@ -1,0 +1,4 @@
+{
+  "name": "entry", "version": "1.0.1", "description": "Game of Life",
+  "dependencies": { "libgameoflife.so": "file:./src/main/cpp/types/libgameoflife" }
+}

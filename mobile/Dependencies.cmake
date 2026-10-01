@@ -1,0 +1,49 @@
+# Host-installed headers and portable sources; never link host libraries into apps.
+# Callers set LONGMARCH_ROOT to the LongMarch submodule before including this file.
+get_filename_component(GOL_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+# The LONGMARCH_MOBILE_DEPS environment variable serves builds that cannot pass
+# CMake arguments, such as DevEco native builds of a project using LongMarch.
+if(DEFINED ENV{LONGMARCH_MOBILE_DEPS})
+  set(_mobile_deps_default "$ENV{LONGMARCH_MOBILE_DEPS}")
+else()
+  set(_mobile_deps_default "${GOL_ROOT}/out/mobile/deps")
+endif()
+set(LONGMARCH_MOBILE_DEPS "${_mobile_deps_default}" CACHE PATH "vcpkg mobile host dependency installation")
+file(GLOB _mobile_prefixes LIST_DIRECTORIES true "${LONGMARCH_MOBILE_DEPS}/*")
+set(_mobile_includes)
+set(_mobile_sources)
+foreach(_prefix IN LISTS _mobile_prefixes)
+  list(APPEND _mobile_includes "${_prefix}/include")
+  list(APPEND _mobile_sources "${_prefix}/share/longmarch-mobile-sources")
+endforeach()
+find_path(LONGMARCH_MOBILE_HEADERS glm/glm.hpp HINTS ${_mobile_includes} NO_CMAKE_FIND_ROOT_PATH)
+find_path(LONGMARCH_MOBILE_SOURCES mikktspace/mikktspace.c HINTS ${_mobile_sources} NO_CMAKE_FIND_ROOT_PATH)
+if(NOT LONGMARCH_MOBILE_HEADERS OR NOT LONGMARCH_MOBILE_SOURCES)
+  message(FATAL_ERROR "Install the shared mobile dependencies first: vcpkg install --x-manifest-root=${GOL_ROOT}/mobile --x-install-root=${GOL_ROOT}/out/mobile/deps --triplet=<host-triplet>. CMake does not download dependencies.")
+endif()
+set(mikktspace_SOURCE_DIR "${LONGMARCH_MOBILE_SOURCES}/mikktspace")
+foreach(_dependency HARFBUZZ PNG BZIP2 BROTLI ZLIB)
+  set(FT_DISABLE_${_dependency} ON CACHE BOOL "" FORCE)
+endforeach()
+add_subdirectory("${LONGMARCH_MOBILE_SOURCES}/freetype" "${CMAKE_CURRENT_BINARY_DIR}/freetype" EXCLUDE_FROM_ALL)
+
+if(APPLE)
+  find_path(LONGMARCH_METAL_CPP_DIR Metal/Metal.hpp HINTS ${_mobile_includes}
+    PATH_SUFFIXES metal-cpp NO_CMAKE_FIND_ROOT_PATH REQUIRED)
+  set(metal_cpp_SOURCE_DIR "${LONGMARCH_METAL_CPP_DIR}")
+endif()
+
+function(longmarch_mobile_compiler target)
+  if(CMAKE_CROSSCOMPILING)
+    message(FATAL_ERROR "Shader preparation requires a host build, not a mobile target SDK")
+  endif()
+  # A host SDK only: device/replay targets never include or link Slang.
+  # Same minimum as desktop builds (cmake/SlangVersion.cmake).
+  include("${LONGMARCH_ROOT}/cmake/SlangVersion.cmake")
+  find_package(slang CONFIG REQUIRED HINTS ${_mobile_prefixes})
+  if(slang_VERSION VERSION_LESS LONGMARCH_MIN_SLANG_VERSION)
+    message(FATAL_ERROR "Mobile shader preparation requires Slang ${LONGMARCH_MIN_SLANG_VERSION}+, found ${slang_VERSION}")
+  endif()
+  message(STATUS "Mobile Slang SDK: ${slang_DIR}")
+  target_link_libraries(${target} PUBLIC slang::slang)
+endfunction()

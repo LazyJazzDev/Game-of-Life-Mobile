@@ -1,0 +1,23 @@
+# Build outputs, prepared resources and local tool state
+out/
+build/
+.DS_Store
+.idea/
+.vscode/
+__pycache__/
+
+# HarmonyOS (DevEco)
+harmonyos/.hvigor/
+harmonyos/.idea/
+harmonyos/oh_modules/
+harmonyos/**/oh_modules/
+harmonyos/**/.cxx/
+harmonyos/**/build/
+harmonyos/local.properties
+harmonyos/entry/src/main/resources/rawfile/Resources/
+*.hap
+*.app
+
+# DevEco-generated editor settings
+harmonyos/.clang-tidy
+harmonyos/.clangd

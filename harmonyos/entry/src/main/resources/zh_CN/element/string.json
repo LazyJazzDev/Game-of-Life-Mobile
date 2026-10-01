@@ -1,0 +1,136 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "康威生命游戏"
+    },
+    {
+      "name": "grid_width",
+      "value": "网格宽度"
+    },
+    {
+      "name": "grid_height",
+      "value": "网格高度"
+    },
+    {
+      "name": "done",
+      "value": "完成"
+    },
+    {
+      "name": "delete",
+      "value": "删除"
+    },
+    {
+      "name": "file_name",
+      "value": "文件名"
+    },
+    {
+      "name": "save",
+      "value": "保存"
+    },
+    {
+      "name": "cancel",
+      "value": "取消"
+    },
+    {
+      "name": "replace",
+      "value": "替换"
+    },
+    {
+      "name": "replace_pattern",
+      "value": "替换图案？"
+    },
+    {
+      "name": "replace_exists",
+      "value": "“%s”已存在，要替换它吗？"
+    },
+    {
+      "name": "enter_file_name",
+      "value": "请输入文件名。"
+    },
+    {
+      "name": "save_pattern",
+      "value": "保存图案"
+    },
+    {
+      "name": "open_pattern",
+      "value": "打开图案"
+    },
+    {
+      "name": "my_patterns",
+      "value": "我的图案"
+    },
+    {
+      "name": "all_folders",
+      "value": "全部分类"
+    },
+    {
+      "name": "search_in_folder",
+      "value": "在“%s”中搜索"
+    },
+    {
+      "name": "search_all",
+      "value": "搜索全部图案"
+    },
+    {
+      "name": "save_to_files",
+      "value": "保存到系统文件…"
+    },
+    {
+      "name": "open_from_files",
+      "value": "从系统文件读取…"
+    },
+    {
+      "name": "lexicon_credit",
+      "value": "内置图案改编自 Stephen A. Silver 等编写的 Life Lexicon，以 CC BY-SA 3.0 授权（https://creativecommons.org/licenses/by-sa/3.0/）。"
+    },
+    {
+      "name": "category_still",
+      "value": "静物"
+    },
+    {
+      "name": "category_oscillator",
+      "value": "振荡器"
+    },
+    {
+      "name": "category_spaceship",
+      "value": "飞船"
+    },
+    {
+      "name": "category_gun",
+      "value": "枪"
+    },
+    {
+      "name": "category_puffer",
+      "value": "繁殖器与耙"
+    },
+    {
+      "name": "category_methuselah",
+      "value": "长寿图案"
+    },
+    {
+      "name": "category_other",
+      "value": "其他结构"
+    },
+    {
+      "name": "direction_diagonal",
+      "value": "对角"
+    },
+    {
+      "name": "direction_orthogonal",
+      "value": "正交"
+    },
+    {
+      "name": "direction_oblique",
+      "value": "斜向"
+    },
+    {
+      "name": "game_error",
+      "value": "游戏出错"
+    },
+    {
+      "name": "ok",
+      "value": "好"
+    }
+  ]
+}

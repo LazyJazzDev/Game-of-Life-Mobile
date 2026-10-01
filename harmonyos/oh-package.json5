@@ -1,0 +1,8 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "gameoflife",
+  "version": "1.0.1",
+  "description": "Game of Life for HarmonyOS",
+  "dependencies": {},
+  "devDependencies": {}
+}
