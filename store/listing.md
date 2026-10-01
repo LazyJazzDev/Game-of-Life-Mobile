@@ -44,7 +44,7 @@
 
 ## English
 
-**App name**: Game of Life
+**App name**: Game of Life: Simulator (App Store; the Chinese listing is 生命游戏 - Game of Life)
 
 **Subtitle** (App Store, 30 characters max):
 Conway's cellular automaton
