@@ -7,7 +7,7 @@ included as a Git submodule; this repository holds the mobile apps around it.
 
 | | iOS / iPadOS | HarmonyOS |
 |---|---|---|
-| Bundle | `net.lazyjazz.gameoflife` | `dev.lazyjazz.gameoflife` |
+| Bundle | `net.lazyjazz.gameoflife` | `net.lazyjazz.gameoflife` |
 | Store | App Store | AppGallery |
 | Build | [ios/README.md](ios/README.md) | [harmonyos/README.md](harmonyos/README.md) |
 

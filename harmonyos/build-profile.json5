@@ -1,7 +1,7 @@
 {
   "app": {
     // Signing material stays local: add a signing configuration for
-    // dev.lazyjazz.gameoflife here and reference it from the product (README.md).
+    // net.lazyjazz.gameoflife here and reference it from the product (README.md).
     "signingConfigs": [],
     "products": [
       {

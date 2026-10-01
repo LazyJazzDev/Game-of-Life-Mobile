@@ -1,6 +1,6 @@
 # Game of Life for HarmonyOS
 
-The 生命游戏 / Game of Life app (`dev.lazyjazz.gameoflife`): an ArkUI page over the
+The 生命游戏 / Game of Life app (`net.lazyjazz.gameoflife`): an ArkUI page over the
 desktop Game of Life from LongMarch (`../LongMarch/demo/gol`), rendered with
 LongMarch's Vulkan backend into an XComponent surface.
 
@@ -36,7 +36,7 @@ staged bundle is tied to the Slang compiler that prepared it.
 
 `build-profile.json5` is committed without signing material. Add signing
 configurations locally (DevEco Studio's automatic signing, or AppGallery Connect
-certificates and profiles for `dev.lazyjazz.gameoflife`) and set the product's
+certificates and profiles for `net.lazyjazz.gameoflife`) and set the product's
 `signingConfig`, but do not commit them. A debug profile installs on registered
 devices; for AppGallery, use the release profile and build the `.app` package:
 
