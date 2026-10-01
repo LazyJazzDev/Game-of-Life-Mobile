@@ -10,6 +10,7 @@
 #include <future>
 
 #include "grassland/graphics/sha256.h"
+#include "grassland/graphics/shader_cache.h"
 
 namespace longmarch::harmony {
 namespace {
@@ -195,6 +196,8 @@ void Host::Execute(const std::string &json) {
     error_.clear();
     if (!ready_)
       throw std::runtime_error("Resources are still being prepared");
+    // The app only reads the SPIR-V prepared offline (prepare_resources.py).
+    grassland::graphics::ConfigureShaderCache({resources_ / "shaders", true, false});
     game_ = std::make_unique<DesktopGameSession>(grassland::graphics::BACKEND_API_VULKAN);
     game_->EnableNativeSizeControls();
     Resize();

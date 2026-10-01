@@ -21,3 +21,5 @@ harmonyos/entry/src/main/resources/rawfile/Resources/
 # DevEco-generated editor settings
 harmonyos/.clang-tidy
 harmonyos/.clangd
+# DevEco signing material written under the project by mistake; never commit
+harmonyos/Users/
