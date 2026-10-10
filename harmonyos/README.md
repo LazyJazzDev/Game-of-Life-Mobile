@@ -21,7 +21,7 @@ LongMarch's Vulkan backend into an XComponent surface.
 
 The minimum supported system is HarmonyOS 7.0 (API 26), configured as
 `compatibleSdkVersion: "26.0.0"`. The AGC resubmission retains version 1.0.1
-(version code 1000001).
+(current test build 1000002; the AGC draft still contains the earlier build).
 
 Install the shared mobile dependencies once (`../mobile`), into `../out/mobile/deps`
 or a directory named by `LONGMARCH_MOBILE_DEPS`. Then stage the game's prepared
@@ -84,9 +84,18 @@ block layout bits requested by this application are supported.
 The backend now negotiates these capabilities instead of requiring them. When
 unavailable, it uses cached render passes/framebuffers and lazy static-topology
 pipeline variants. All four capability combinations passed GPU readback tests
-on MoltenVK, including its Vulkan 1.2 extension path, but the new implementation
-still needs validation on the cloud Mate 60 RS. The app minimum remains HarmonyOS
-7.0; this change does not lower the installation requirement.
+on MoltenVK, including its Vulkan 1.2 extension path. Cloud Mate 60 RS testing of
+build 1000002 (LongMarch `39f4bca`, release optimizations, diagnostic minimum API
+12) on 6.0.0.108(SP6C00E107R8P7) now passes device creation but crashes during
+`vkCreateGraphicsPipelines`. The SIGSEGV occurs inside
+`libbishenggpucompiler_v200.so.15` (`compiler_compile_pipeline`) while the first
+indexed draw resolves its lazy PSO. This localizes the remaining failure to the
+vendor pipeline compiler; it does not yet establish whether the trigger is shader
+code, pipeline state or a driver defect. Basic rendering and interaction have
+not passed on this device. The app minimum remains HarmonyOS 7.0 until the Mate
+60 tests pass, at which point it should be restored to HarmonyOS 6.0 as requested.
+The diagnostic package must not be submitted to AGC. Logs and package hash are
+recorded under `out/harmonyos/mate60-fallback-1000002/`.
 Device-creation failures now report the VkResult, GPU/driver, requested extensions
 and relevant feature support under the `LongMarchGPU` HiLog tag on HarmonyOS.
 
@@ -104,4 +113,14 @@ view) for both color and depth. Removing the self-resolve views restored normal
 game rendering on this device without changing the game shaders or grid.
 Vulkan specifies that the resolve view is ignored in this mode, so this is a
 device-tested compatibility workaround, not proof that self-resolve with NONE
-violates the specification. The new Mate 60 compatibility path is implemented but not yet verified on that device.
+violates the specification. The remaining Mate 60 pipeline-compiler crash is tracked above.
+
+## Build identification
+
+Keep `versionName` at the intended marketing version (currently `1.0.1`).
+Increment `AppScope/app.json5` `versionCode` for each distinct build distributed
+for testing or submission, including rebuilds under the same marketing version.
+Record both values, the LongMarch commit and the package SHA-256 with the artifact;
+include the version and build number in uploaded filenames and delivery reports.
+Compatibility-only cloud packages must be identified separately from release
+packages when their minimum OS differs. Do not submit these diagnostic packages.
