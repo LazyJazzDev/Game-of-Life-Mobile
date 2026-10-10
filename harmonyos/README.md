@@ -81,10 +81,12 @@ Maleoon 910 driver advertises Vulkan 1.2.275 (driver version 3906508039).
 and both corresponding feature bits are false. Descriptor indexing and scalar
 block layout bits requested by this application are supported.
 
-The Vulkan backend currently requires these missing extensions. Compatibility
-requires a render-pass/framebuffer path and appropriate pipeline state handling;
-removing extension names alone is insufficient. This is a confirmed result for
-this cloud Mate 60 RS, not verification of every Mate 60 model or OS version.
+The backend now negotiates these capabilities instead of requiring them. When
+unavailable, it uses cached render passes/framebuffers and lazy static-topology
+pipeline variants. All four capability combinations passed GPU readback tests
+on MoltenVK, including its Vulkan 1.2 extension path, but the new implementation
+still needs validation on the cloud Mate 60 RS. The app minimum remains HarmonyOS
+7.0; this change does not lower the installation requirement.
 Device-creation failures now report the VkResult, GPU/driver, requested extensions
 and relevant feature support under the `LongMarchGPU` HiLog tag on HarmonyOS.
 
@@ -97,9 +99,9 @@ stripes; transfer clears and a blit of a cleared image displayed correctly.
 
 The trigger was assigning each dynamic-rendering attachment's own image view
 to `resolveImageView` while `resolveMode` was `VK_RESOLVE_MODE_NONE`. These
-single-sampled attachments now explicitly use no resolve mode and a null resolve
-view for both color and depth. Removing the self-resolve views restored normal
+single-sampled attachments retain zero-initialized resolve fields (NONE and a null
+view) for both color and depth. Removing the self-resolve views restored normal
 game rendering on this device without changing the game shaders or grid.
 Vulkan specifies that the resolve view is ignored in this mode, so this is a
 device-tested compatibility workaround, not proof that self-resolve with NONE
-violates the specification. The separate Mate 60 missing-extension issue remains.
+violates the specification. The new Mate 60 compatibility path is implemented but not yet verified on that device.
