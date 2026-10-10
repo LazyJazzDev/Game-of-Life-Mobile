@@ -19,9 +19,10 @@ LongMarch's Vulkan backend into an XComponent surface.
 
 ## Build
 
-The minimum supported system is HarmonyOS 7.0 (API 26), configured as
-`compatibleSdkVersion: "26.0.0"`. The AGC resubmission retains version 1.0.1
-(current test build 1000002; the AGC draft still contains the earlier build).
+The minimum supported system is HarmonyOS 6.0 (API 20), configured as
+`compatibleSdkVersion: "6.0.0(20)"`. The current package is version 1.0.1,
+build 1000008. The AGC draft still contains the earlier package and has not
+been resubmitted.
 
 Install the shared mobile dependencies once (`../mobile`), into `../out/mobile/deps`
 or a directory named by `LONGMARCH_MOBILE_DEPS`. Then stage the game's prepared
@@ -84,18 +85,25 @@ block layout bits requested by this application are supported.
 The backend now negotiates these capabilities instead of requiring them. When
 unavailable, it uses cached render passes/framebuffers and lazy static-topology
 pipeline variants. All four capability combinations passed GPU readback tests
-on MoltenVK, including its Vulkan 1.2 extension path. Cloud Mate 60 RS testing of
-build 1000002 (LongMarch `39f4bca`, release optimizations, diagnostic minimum API
-12) on 6.0.0.108(SP6C00E107R8P7) now passes device creation but crashes during
-`vkCreateGraphicsPipelines`. The SIGSEGV occurs inside
-`libbishenggpucompiler_v200.so.15` (`compiler_compile_pipeline`) while the first
-indexed draw resolves its lazy PSO. This localizes the remaining failure to the
-vendor pipeline compiler; it does not yet establish whether the trigger is shader
-code, pipeline state or a driver defect. Basic rendering and interaction have
-not passed on this device. The app minimum remains HarmonyOS 7.0 until the Mate
-60 tests pass, at which point it should be restored to HarmonyOS 6.0 as requested.
-The diagnostic package must not be submitted to AGC. Logs and package hash are
-recorded under `out/harmonyos/mate60-fallback-1000002/`.
+on MoltenVK, including its Vulkan 1.2 extension path.
+
+Cloud build 1000002 passed device creation but crashed inside
+`libbishenggpucompiler_v200.so.15` during first-draw graphics pipeline creation.
+SPIR-V validation passed, and standard optimization did not resolve the crash.
+The game vertex shader's mixed-type `ByteAddressBuffer.Load<InstanceInfo>` emitted
+float and uint descriptor variables sharing one binding. Loading uint4 words and
+bitcasting the float fields eliminates those aliased views; four column vectors
+are transposed into Slang's matrix constructor without changing the CPU layout.
+This restored startup and rendering on the same Mate 60 RS running
+6.0.0.108(SP6C00E107R8P7). The shader change is LongMarch `2c32fcd`.
+
+The final source and regenerated resources are packaged as 1.0.1 build 1000008,
+minimum HarmonyOS 6.0 (API 20), target API 26. The cloud device passed startup,
+pattern-library loading, continuous evolution, pause and background/resume checks;
+rendering showed no abnormal stripes. Metal renderer/input/animation/focus/
+orientation regression checks pass as well. Cloud test evidence and package
+SHA-256 hashes are under `out/harmonyos/release-1.0.1-1000008/`; the earlier
+failure logs remain under `out/harmonyos/mate60-fallback-1000002/`.
 Device-creation failures now report the VkResult, GPU/driver, requested extensions
 and relevant feature support under the `LongMarchGPU` HiLog tag on HarmonyOS.
 
@@ -113,7 +121,7 @@ view) for both color and depth. Removing the self-resolve views restored normal
 game rendering on this device without changing the game shaders or grid.
 Vulkan specifies that the resolve view is ignored in this mode, so this is a
 device-tested compatibility workaround, not proof that self-resolve with NONE
-violates the specification. The remaining Mate 60 pipeline-compiler crash is tracked above.
+violates the specification. The separate Mate 60 pipeline-compiler workaround is described above.
 
 ## Build identification
 
