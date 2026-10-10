@@ -67,3 +67,19 @@ enabled. Check normal editing, pattern loading and saving on a real phone.
 When submitting this sensor-free package, update AppGallery privacy labels and
 the listing to remove gravity sensor collection. Do not resubmit the older
 sensor-reading package with labels claiming that it does not read sensors.
+
+## Mate 60 graphics investigation
+
+On 2026-10-10, a Huawei cloud Mate 60 RS reproduced the startup error. The
+Maleoon 910 driver advertises Vulkan 1.2.275 (driver version 3906508039).
+`vkCreateDevice` returns `VK_ERROR_EXTENSION_NOT_PRESENT` (-7):
+`VK_KHR_dynamic_rendering` and `VK_EXT_extended_dynamic_state` are absent,
+and both corresponding feature bits are false. Descriptor indexing and scalar
+block layout bits requested by this application are supported.
+
+The Vulkan backend currently requires these missing extensions. Compatibility
+requires a render-pass/framebuffer path and appropriate pipeline state handling;
+removing extension names alone is insufficient. This is a confirmed result for
+this cloud Mate 60 RS, not verification of every Mate 60 model or OS version.
+Device-creation failures now report the VkResult, GPU/driver, requested extensions
+and relevant feature support under the `LongMarchGPU` HiLog tag on HarmonyOS.
