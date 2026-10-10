@@ -2,8 +2,9 @@
   "app": {
     "bundleName": "net.lazyjazz.gameoflife",
     "vendor": "LazyJazzDev",
-    "versionCode": 1000009,
+    "versionCode": 1000001,
     "versionName": "1.0.1",
+    "buildVersion": "10",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }

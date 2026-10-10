@@ -40,8 +40,7 @@ thickness across four window extents and three densities. Evidence is under
 
 The minimum supported system is HarmonyOS 6.0 (API 20), configured as
 `compatibleSdkVersion: "6.0.0(20)"`. The current package is version 1.0.1,
-build 1000009 (foldable layout). Build 1000008 was submitted to AGC; the
-foldable build has not been submitted.
+`versionCode` 1000001 and `buildVersion` 10 (foldable layout).
 
 Install the shared mobile dependencies once (`../mobile`), into `../out/mobile/deps`
 or a directory named by `LONGMARCH_MOBILE_DEPS`. Then stage the game's prepared
@@ -144,10 +143,13 @@ violates the specification. The separate Mate 60 pipeline-compiler workaround is
 
 ## Build identification
 
-Keep `versionName` at the intended marketing version (currently `1.0.1`).
-Increment `AppScope/app.json5` `versionCode` for each distinct build distributed
-for testing or submission, including rebuilds under the same marketing version.
-Record both values, the LongMarch commit and the package SHA-256 with the artifact;
-include the version and build number in uploaded filenames and delivery reports.
+Keep `versionName` at the intended marketing version (currently `1.0.1`) and
+`versionCode` at that release's version code (currently `1000001`). Increment
+`AppScope/app.json5` **`buildVersion`** for distinct builds of the same version;
+this is AGC's separate “构建版本” column. Do not increment `versionCode` merely
+to identify rebuilds. Record all three fields, the LongMarch commit and package
+SHA-256 with each artifact. Name uploads `GameOfLife-1.0.1-build-10.app`, for example.
+The older artifacts named `1000002` through `1000009` incorrectly used
+`versionCode` as a build counter; those names are historical evidence only.
 Compatibility-only cloud packages must be identified separately from release
 packages when their minimum OS differs. Do not submit these diagnostic packages.
