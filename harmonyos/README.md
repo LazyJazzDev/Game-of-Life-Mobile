@@ -10,7 +10,7 @@ LongMarch's Vulkan backend into an XComponent surface.
 |---|---|
 | `AppScope/` | Bundle name, version, app name (en/zh) and the layered icon (`demo/gol/tools/app_icon.py`) |
 | `entry/src/main/ets/entryability/EntryAbility.ets` | Fullscreen window, native initialization, foreground/background |
-| `entry/src/main/ets/pages/Index.ets` | Game page: touch and pinch input, gravity-turned icons, grid-size popover, pattern library |
+| `entry/src/main/ets/pages/Index.ets` | Game page: touch and pinch input, fixed-orientation icons, grid-size popover, pattern library |
 | `entry/src/main/resources/` | Strings (en/zh) and the bundled game resources (`rawfile/Resources`, generated) |
 | `entry/src/main/cpp/` | Native build entry for DevEco; builds `native/` |
 | `native/` | N-API bridge, render-thread host, Vulkan presentation and the hosted game session |
@@ -83,3 +83,19 @@ removing extension names alone is insufficient. This is a confirmed result for
 this cloud Mate 60 RS, not verification of every Mate 60 model or OS version.
 Device-creation failures now report the VkResult, GPU/driver, requested extensions
 and relevant feature support under the `LongMarchGPU` HiLog tag on HarmonyOS.
+
+## nova 15 Pro graphics investigation
+
+On 2026-10-10, cloud device KLE-AL00 running 7.0.0.105(SP6C00E105R3P3)
+reproduced dark, regularly striped output. Its Maleoon 920C reports Vulkan 1.3
+and driver version 3104880233. A constant-color fragment shader reproduced the
+stripes; transfer clears and a blit of a cleared image displayed correctly.
+
+The trigger was assigning each dynamic-rendering attachment's own image view
+to `resolveImageView` while `resolveMode` was `VK_RESOLVE_MODE_NONE`. These
+single-sampled attachments now explicitly use no resolve mode and a null resolve
+view for both color and depth. Removing the self-resolve views restored normal
+game rendering on this device without changing the game shaders or grid.
+Vulkan specifies that the resolve view is ignored in this mode, so this is a
+device-tested compatibility workaround, not proof that self-resolve with NONE
+violates the specification. The separate Mate 60 missing-extension issue remains.
