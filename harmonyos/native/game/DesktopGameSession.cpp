@@ -79,6 +79,10 @@ void DesktopGameSession::SetControlExtentLimit(float height_fraction) {
   life_->SetControlExtentLimit(height_fraction);
 }
 
+void DesktopGameSession::SetControlPixelSize(float pixels) {
+  life_->SetControlPixelSize(pixels);
+}
+
 void DesktopGameSession::EnableNativeSizeControls() {
   life_->EnableNativeSizeControls();
 }

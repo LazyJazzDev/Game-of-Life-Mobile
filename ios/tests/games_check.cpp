@@ -7,6 +7,7 @@
 
 #include "demo/gol/application/listener.h"
 #include "demo/gol/cells_pattern.h"
+#include "demo/gol/game_of_life_gui.h"
 #include "demo/gol/simulation_clock.h"
 #include "demos/DemoSession.h"
 #define GLFW_INCLUDE_NONE
@@ -200,6 +201,35 @@ int main(int argc, char **argv) {
       Check(game.Image()->Extent().width == 800 && game.Image()->Extent().height == 480,
             "Shared UI orientation resize failed");
       std::cout << "PASS gol shared desktop renderer, input, animation, focus and orientation\n";
+    }
+    {
+      // Foldable surfaces change size without changing their pixel density.
+      life_demo::GameOfLife life("fold layout", 360, 780, 64, 64, grassland::graphics::BACKEND_API_METAL, true);
+      life.InitializeHosted();
+      life.EnableNativeSizeControls();
+      for (float density : {1.0f, 2.0f, 3.0f}) {
+        life.SetControlPixelSize(40.0f * density);
+        for (auto size : {glm::ivec2{360, 780}, glm::ivec2{660, 780}, glm::ivec2{1000, 780}, glm::ivec2{780, 1000}}) {
+          auto pixels = glm::ivec2(glm::vec2(size) * density);
+          life.GetWindow()->UpdateHostedSize(pixels, pixels);
+          life.RenderHostedFrame();
+          const auto bounds = life.SizeControlBounds(1);
+          const auto extent = glm::vec2(bounds.z - bounds.x, bounds.w - bounds.y) * glm::vec2(pixels);
+          Check(std::abs(std::min(extent.x, extent.y) / density - 17.0f) < 0.01f,
+                "Folding changed density-independent control thickness");
+          Check(bounds.x >= 0 && bounds.y >= 0 && bounds.z <= 1 && bounds.w <= 1,
+                "Fold layout placed controls outside the surface");
+          const auto centre = glm::vec2(bounds.x + bounds.z, bounds.y + bounds.w) * 0.5f * glm::vec2(pixels);
+          auto *window = life.GetWindow();
+          window->SendPointer(centre.x, centre.y);
+          window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
+          window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
+          Check(life.TakeSizeControlRequest() == glm::ivec2(1, 64),
+                "Fold/rotation broke control hit testing or grid state");
+        }
+      }
+      life.CloseHosted();
+      std::cout << "PASS fold layout: stable vp sizing and hit testing across extents and densities\n";
     }
   } catch (const std::exception &e) {
     std::cerr << e.what() << '\n';

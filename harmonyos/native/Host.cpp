@@ -171,6 +171,8 @@ void Host::Resize() {
   if (game_ && width_ && height_) {
     game_->Resize(width_, height_);
     game_->SetBottomControlInset(bottom_inset_);
+    game_->SetControlPixelSize(control_pixel_size_);
+    game_->SetCutoutInsets(cutout_insets_.x, cutout_insets_.y, cutout_insets_.z);
   }
 }
 
@@ -205,6 +207,11 @@ void Host::Execute(const std::string &json) {
   } else if (type == "size" && game_) {
     size_value_ = int(std::clamp(Number(c, "value", 64), 2.0, 256.0));
     game_->SetGridDimension(int(Number(c, "axis")), size_value_);
+    dirty_ = true;
+  } else if (type == "layout") {
+    control_pixel_size_ = float(std::clamp(Number(c, "value"), 0.0, 512.0));
+    cutout_insets_ = glm::clamp(glm::vec3{Number(c, "x"), Number(c, "y"), Number(c, "right")}, 0.0f, 0.25f);
+    Resize();
     dirty_ = true;
   } else if (type == "bottomInset") {
     bottom_inset_ = float(std::clamp(Number(c, "value"), 0.0, 0.25));

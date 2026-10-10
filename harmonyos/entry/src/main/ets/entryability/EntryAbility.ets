@@ -19,6 +19,8 @@ export default class EntryAbility extends UIAbility {
       const win = await stage.getMainWindow();
       await win.setWindowLayoutFullScreen(true);
       await win.setWindowSystemBarEnable([]);
+      // The system handles rotation and its lock; the app reads no motion sensor.
+      await win.setPreferredOrientation(window.Orientation.AUTO_ROTATION_RESTRICTED);
       await stage.loadContent('pages/Index');
     } catch (e) {
       AppStorage.setOrCreate('gameStartupError', `Window setup: ${e}`);

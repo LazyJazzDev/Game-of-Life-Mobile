@@ -17,12 +17,31 @@ LongMarch's Vulkan backend into an XComponent surface.
 | `prepare_resources.py` | Stages the patterns and SPIR-V shaders into `rawfile/Resources` |
 | `build_hap.sh` | Command-line HAP and `.app` builds |
 
+## Foldable layout
+
+Native controls use a 40 vp icon size converted to framebuffer pixels by ArkUI's
+current display density. Folding changes available canvas space and toolbar
+placement, not the target control size; unusually small windows shrink controls
+to keep them inside the surface. Desktop and iOS sizing remain unchanged.
+
+The window uses `AUTO_ROTATION_RESTRICTED`: HarmonyOS handles orientation and
+respects the user's rotation lock. The app does not subscribe to motion sensors.
+Window/area changes refresh density and cutout/gesture insets, cancel in-flight
+touch gestures and dismiss stale size popovers. Landscape uses side toolbars;
+portrait uses top/bottom controls without resetting the simulation.
+
+Build 1000009 was tested on cloud Mate XT 2 (HarmonyOS 7.0.0.107), including
+three-screen portrait/landscape and two-screen expansion with a loaded pattern.
+Shared Metal regression tests exercise control hit testing and constant vp
+thickness across four window extents and three densities. Evidence is under
+`out/harmonyos/fold-1000009/`.
+
 ## Build
 
 The minimum supported system is HarmonyOS 6.0 (API 20), configured as
 `compatibleSdkVersion: "6.0.0(20)"`. The current package is version 1.0.1,
-build 1000008. The AGC draft still contains the earlier package and has not
-been resubmitted.
+build 1000009 (foldable layout). Build 1000008 was submitted to AGC; the
+foldable build has not been submitted.
 
 Install the shared mobile dependencies once (`../mobile`), into `../out/mobile/deps`
 or a directory named by `LONGMARCH_MOBILE_DEPS`. Then stage the game's prepared

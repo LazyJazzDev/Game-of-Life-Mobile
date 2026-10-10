@@ -1,5 +1,5 @@
 import { common } from '@kit.AbilityKit';
-import { window, display } from '@kit.ArkUI';
+import { window } from '@kit.ArkUI';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import native from 'libgameoflife.so';
 
@@ -68,7 +68,7 @@ function patternCells(pattern: BuiltinPattern): string {
 }
 interface NativeCommand {
   type: string; value?: number | boolean; axis?: number; path?: string; angle?: number; kind?: number;
-  x?: number; y?: number; request?: number;
+  x?: number; y?: number; right?: number; request?: number;
 }
 class NativeStatus {
   ready: boolean = false;
@@ -210,6 +210,11 @@ struct Index {
     const indicator = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
     const bottom = Math.max(indicator.bottomRect.height > 0 ? rect.height - indicator.bottomRect.top : 0,
       cutout.bottomRect.height > 0 ? rect.height - cutout.bottomRect.top : 0);
+    // vp follows the current display density, unlike a percentage of the canvas.
+    this.send({ type: 'layout', value: ui.vp2px(40),
+      x: rectEnd(cutout.leftRect.left, cutout.leftRect.width) / Math.max(1, rect.width),
+      y: rectEnd(cutout.topRect.top, cutout.topRect.height) / Math.max(1, rect.height),
+      right: cutout.rightRect.width > 0 ? (rect.width - cutout.rightRect.left) / Math.max(1, rect.width) : 0 });
     this.safeBottom = ui.px2vp(bottom);
     this.sendBottomInset();
   }
@@ -232,24 +237,12 @@ struct Index {
     this.alert(this.text('game_error'), error);
   }
 
-  // The interface and icons keep the orientation the game opened in.
-  private async lockOrientation(): Promise<void> {
-    try {
-      const win = await window.getLastWindow(this.context());
-      const rotation = display.getDefaultDisplaySync().rotation;
-      let orientation = window.Orientation.PORTRAIT;
-      if (rotation === 1) orientation = window.Orientation.LANDSCAPE;
-      else if (rotation === 3) orientation = window.Orientation.LANDSCAPE_INVERTED;
-      else if (rotation === 2) orientation = window.Orientation.PORTRAIT_INVERTED;
-      await win.setPreferredOrientation(orientation);
-    } catch (e) { this.alert(this.text('game_error'), `Orientation: ${e}`); }
-  }
   private open(): void {
     this.shownError = '';
     this.opened = true;
     this.button = -1; this.multi = false;
     this.send({ type: 'open' });
-    this.lockOrientation();
+    this.updateSafeArea();
     this.send({ type: 'icons', angle: 0 });
   }
   private leave(): void {
@@ -658,7 +651,12 @@ struct Index {
   // ---- Game page (iOS GamesView) ----
 
   private canvasArea(area: Area): void {
+    // Fold/rotation invalidates coordinates of any gesture still in flight.
+    if (this.button >= 0) { this.pointer(5, 0, 0, 0); this.pointer(5, 0, 0, 1); }
+    this.button = -1; this.multi = false; this.distance = 0;
+    this.closeSize();
     this.areaWidth = Number(area.width); this.areaHeight = Number(area.height);
+    this.updateSafeArea();
     this.sendBottomInset();
   }
 

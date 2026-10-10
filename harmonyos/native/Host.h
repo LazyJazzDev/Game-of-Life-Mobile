@@ -53,6 +53,8 @@ class Host {
   uint64_t frames_ = 0;
   // Fraction of the surface height kept clear of the system gesture area, as on iOS.
   float bottom_inset_ = 0;
+  float control_pixel_size_ = 0;
+  glm::vec3 cutout_insets_{0.0f};
   double fps_ = 0;
   double delay_ = 0;
   std::chrono::steady_clock::time_point deadline_{}, last_present_{};
