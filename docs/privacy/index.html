@@ -56,27 +56,21 @@
     <p>本政策适用于 LazyJazzDev 开发的「生命游戏」应用（iOS 与 HarmonyOS 版本）。</p>
 
     <h3>信息处理概况</h3>
-    <p>本应用不需要注册或登录，不包含广告、数据分析或第三方统计 SDK，游戏离线运行。HarmonyOS 版本的可选图标转向功能会在您同意后读取重力传感器信息，具体如下。我们不会上传、出售或向第三方提供这些信息，也不将其用于识别身份、统计分析或广告。</p>
+    <p>本应用不需要注册或登录，不包含广告、数据分析或第三方统计 SDK，游戏离线运行。更新后的 HarmonyOS 版本已移除重力传感器读取，按钮图标固定显示。我们不会上传、出售或向第三方提供这些信息，也不将其用于识别身份、统计分析或广告。</p>
 
     <h3>您保存的图案</h3>
     <p>您在应用内保存的图案仅保存在本设备上属于本应用的存储空间中，不会上传。卸载应用会删除这些文件。使用「从系统文件读取」或「保存到系统文件」时，应用只访问您在系统文件选择器中主动选择的文件。</p>
 
-    <h3>HarmonyOS：重力传感器信息</h3>
-    <ul>
-      <li>信息种类与范围：设备信息中的重力传感器信息。系统回调提供 x、y、z 轴重力分量，应用实际使用 x、y 分量计算图标方向，不获取设备标识符。</li>
-      <li>用途：让游戏按钮上的图标随设备转向，便于操作；此功能可选。</li>
-      <li>方式与时机：通过 HarmonyOS SensorServiceKit 的 GRAVITY 接口，在您阅读本说明并点击「同意并开启」后，且游戏页面处于前台可见状态时订阅读数，请求采样间隔为 200 毫秒（约每秒 5 次，实际回调频率由系统决定）。</li>
-      <li>存储与共享：仅在本机内存中即时计算，不记录传感器历史、不写入文件、不上传或提供给第三方，不与身份关联。仅将您的开启/关闭选择保存在应用本地存储中。</li>
-      <li>拒绝与撤回：首次默认关闭，选择「不开启／关闭」不影响游戏、图案编辑或保存。可在「打开图案／保存图案」面板底部进入「隐私与图标转向」随时开启或关闭。关闭、离开游戏页面或应用进入后台后停止读取；关闭后图标固定显示。</li>
-    </ul>
+    <h3>HarmonyOS：固定图标</h3>
+    <p>2026 年 10 月 10 日修订的版本已移除重力传感器功能，不订阅或读取重力传感器信息，也不提供自动转向开关。旧版本曾将重力分量用于本机即时计算按钮图标方向，不记录、不上传或共享；请更新到移除此功能的版本。</p>
     <h3>iOS：设备方向</h3>
-    <p>iOS 版本使用系统提供的设备方向通知让按钮图标保持正向，不订阅上述 HarmonyOS 重力传感器接口。方向信息仅在本机即时使用，不记录或传输。</p>
+    <p>iOS 版本使用系统提供的设备方向通知让按钮图标保持正向。方向信息仅在本机即时使用，不记录或传输。</p>
 
     <h3>权限</h3>
-    <p>本应用不申请相机、麦克风、位置、通讯录或网络权限。HarmonyOS 重力传感器接口不触发这些系统权限弹窗，但其数据读取仍须在应用内取得您的同意，不能因为没有系统权限弹窗就视为未处理设备信息。</p>
+    <p>本应用不申请相机、麦克风、位置、通讯录或网络权限。</p>
 
     <h3>儿童</h3>
-    <p>本应用适合所有年龄段使用，上述最小范围和本机处理规则同样适用于儿童。儿童应在监护人指导下决定是否启用可选的传感器功能；不开启不影响游戏。</p>
+    <p>本应用适合所有年龄段使用，上述最小范围和本机处理规则同样适用于儿童。</p>
 
     <h3>政策变更</h3>
     <p>如果本政策发生变更，我们会更新本页面并修改生效日期。</p>
@@ -91,27 +85,21 @@
     <p>This policy applies to the Game of Life app (iOS and HarmonyOS) developed by LazyJazzDev.</p>
 
     <h3>Information processing</h3>
-    <p>The app requires no account or sign-in, has no advertising, analytics or third-party tracking SDKs, and runs offline. The optional icon-rotation feature on HarmonyOS reads gravity sensor information after your consent, as described below. We do not upload, sell, share, identify users from, or use this information for analytics or advertising.</p>
+    <p>The app requires no account or sign-in, has no advertising, analytics or third-party tracking SDKs, and runs offline. The updated HarmonyOS version removes gravity sensor access and keeps button icons fixed. We do not upload, sell, share, identify users from, or use this information for analytics or advertising.</p>
 
     <h3>Your saved patterns</h3>
     <p>Patterns you save in the app stay in the app's own storage on your device and are never uploaded. Deleting the app deletes them. When you choose Open from Files or Save to Files, the app accesses only the files you select in the system file picker.</p>
 
-    <h3>HarmonyOS: gravity sensor information</h3>
-    <ul>
-      <li>Scope: device information consisting of gravity sensor readings. The system callback supplies x/y/z gravity components; the app uses x and y to calculate icon orientation. No device identifier is obtained.</li>
-      <li>Purpose: rotate button icons with the device for easier operation. This feature is optional.</li>
-      <li>Method and timing: after you read this notice and select “Agree and enable”, the app subscribes to SensorServiceKit GRAVITY readings only while the game is visible in the foreground. It requests a 200 ms interval (about five readings per second; the system determines actual delivery).</li>
-      <li>Storage and sharing: readings are processed immediately in memory on your device, never logged, written to files, uploaded, shared or linked to an identity. Only your enabled/disabled preference is stored locally.</li>
-      <li>Choice and withdrawal: off by default. Declining does not affect playing, editing or saving patterns. Open “Privacy &amp; Icon Rotation” at the bottom of the Open Pattern / Save Pattern panel to change your choice. Disabling the feature, leaving the game page or entering the background stops reading. Icons remain fixed when disabled.</li>
-    </ul>
+    <h3>HarmonyOS: fixed icons</h3>
+    <p>The revision dated October 10, 2026 removes the gravity sensor feature. It does not subscribe to or read gravity sensor information and has no automatic icon-rotation toggle. Earlier versions used gravity components only for immediate on-device icon rotation, without recording, uploading or sharing them. Please update to the version that removes this feature.</p>
     <h3>iOS: device orientation</h3>
-    <p>The iOS version uses system device-orientation notifications to keep button icons upright; it does not subscribe to the HarmonyOS sensor API described above. Orientation information is used immediately on-device and is not recorded or transmitted.</p>
+    <p>The iOS version uses system device-orientation notifications to keep button icons upright. Orientation information is used immediately on-device and is not recorded or transmitted.</p>
 
     <h3>Permissions</h3>
-    <p>The app does not request camera, microphone, location, contacts or network permissions. Access to the HarmonyOS gravity sensor does not trigger those system permission prompts, but still requires your consent inside the app. Absence of a system permission prompt does not mean device information is not processed.</p>
+    <p>The app does not request camera, microphone, location, contacts or network permissions.</p>
 
     <h3>Children</h3>
-    <p>The app is suitable for all ages. The same minimal, on-device processing practices apply to children. Children should decide whether to enable the optional sensor feature with a guardian; declining does not affect gameplay.</p>
+    <p>The app is suitable for all ages. The same minimal, on-device processing practices apply to children.</p>
 
     <h3>Changes to this policy</h3>
     <p>If this policy changes, we will update this page and its effective date.</p>
