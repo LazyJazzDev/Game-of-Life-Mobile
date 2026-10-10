@@ -86,3 +86,14 @@ game of life,conway,cellular automaton,glider,life lexicon,math,simulation,emerg
 
 **What's new**:
 First release.
+
+## HarmonyOS privacy wording override
+
+For HarmonyOS, replace the generic “no personal information collected / no
+permissions” marketing bullet above with:
+
+- 无广告、无需注册，游戏离线运行；图标转向使用重力传感器信息，仅在本机即时处理，不记录、不上传或共享。
+- No ads or account; the game runs offline. Icon rotation uses gravity sensor readings only for immediate on-device processing, without recording, uploading or sharing them.
+
+The consent-enabled build additionally provides an opt-in and withdrawal control
+under “隐私与图标转向 / Privacy & Icon Rotation” in the pattern-library footer.
