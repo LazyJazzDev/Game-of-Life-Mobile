@@ -1,8 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { window, display } from '@kit.ArkUI';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
-import { sensor } from '@kit.SensorServiceKit';
-import { preferences } from '@kit.ArkData';
 import native from 'libgameoflife.so';
 
 interface PatternFile { name: string; modified: number; }
@@ -153,12 +151,6 @@ struct Index {
   private distance: number = 0;
   private button: number = -1;
   private multi: boolean = false;
-  private sensorActive: boolean = false;
-  private gravityAllowed: boolean = false;
-  private privacyChoiceKnown: boolean = false;
-  private pageVisible: boolean = true;
-  @StorageLink('gameForeground') @Watch('foregroundChanged') private foreground: boolean = false;
-  private entryAngle: number = 0;
   private shownError: string = '';
   private win?: window.Window;
   private context(): common.UIAbilityContext { return this.getUIContext().getHostContext() as common.UIAbilityContext; }
@@ -169,13 +161,6 @@ struct Index {
   private send(c: NativeCommand): void { native.command(JSON.stringify(c)); }
 
   aboutToAppear(): void {
-    // Existing installations have no consent record and must opt in too.
-    try {
-      const choice = preferences.getPreferencesSync(this.context(), { name: 'privacy' })
-        .getSync('gravityConsent20261010', '') as string;
-      this.gravityAllowed = choice === 'enabled';
-      this.privacyChoiceKnown = choice === 'enabled' || choice === 'disabled';
-    } catch (e) { this.gravityAllowed = false; this.privacyChoiceKnown = false; }
     const startup = AppStorage.get<string>('gameStartupError') ?? '';
     if (startup.length > 0) this.alert(this.text('game_error'), startup);
     this.trackSafeArea();
@@ -247,12 +232,11 @@ struct Index {
     this.alert(this.text('game_error'), error);
   }
 
-  // The interface keeps the orientation the game opened in; gravity turns the icons.
+  // The interface and icons keep the orientation the game opened in.
   private async lockOrientation(): Promise<void> {
     try {
       const win = await window.getLastWindow(this.context());
       const rotation = display.getDefaultDisplaySync().rotation;
-      this.entryAngle = rotation * Math.PI / 2;
       let orientation = window.Orientation.PORTRAIT;
       if (rotation === 1) orientation = window.Orientation.LANDSCAPE;
       else if (rotation === 3) orientation = window.Orientation.LANDSCAPE_INVERTED;
@@ -266,69 +250,11 @@ struct Index {
     this.button = -1; this.multi = false;
     this.send({ type: 'open' });
     this.lockOrientation();
-    this.startGravity();
-    if (!this.privacyChoiceKnown) this.privacySettings();
+    this.send({ type: 'icons', angle: 0 });
   }
   private leave(): void {
     this.send({ type: 'stop' });
     this.opened = false; this.sizeAxis = 0; this.sizeVisible = false; this.shownError = '';
-    this.stopGravity();
-  }
-  // The direction icons turn with the device. The sensor is used only while
-  // the page is visible: apps must not read sensors in the background.
-  private startGravity(): void {
-    if (this.sensorActive || !this.gravityAllowed || !this.opened || !this.pageVisible || !this.foreground) return;
-    try {
-      sensor.on(sensor.SensorId.GRAVITY, (data: sensor.GravityResponse) => {
-        if (this.gravityAllowed && this.opened && this.pageVisible && this.foreground && Math.abs(data.x) + Math.abs(data.y) > 3) {
-          const angle = Math.round(Math.atan2(-data.x, data.y) / (Math.PI / 2)) * Math.PI / 2;
-          this.send({ type: 'icons', angle: this.entryAngle - angle });
-        }
-      }, { interval: 200000000 });
-      this.sensorActive = true;
-    } catch (e) { /* Direction icons remain upright if no gravity sensor is available. */ }
-  }
-  private stopGravity(): void {
-    if (!this.sensorActive) return;
-    try { sensor.off(sensor.SensorId.GRAVITY); } catch (e) { /* Already unsubscribed. */ }
-    this.sensorActive = false;
-  }
-  private foregroundChanged(): void {
-    if (this.foreground) this.startGravity();
-    else this.stopGravity();
-  }
-  onPageShow(): void {
-    this.pageVisible = true;
-    this.startGravity();
-  }
-  onPageHide(): void {
-    this.pageVisible = false;
-    this.stopGravity();
-  }
-  private privacySettings(): void {
-    this.getUIContext().showAlertDialog({
-      title: this.text('privacy_title'),
-      message: this.text('privacy_policy') + '\n\n' + this.text(this.gravityAllowed ? 'gravity_enabled' : 'gravity_disabled'),
-      autoCancel: false,
-      primaryButton: { value: this.text('gravity_decline'), action: () => this.setGravityConsent(false) },
-      secondaryButton: { value: this.text('gravity_agree'), action: () => this.setGravityConsent(true) }
-    });
-  }
-  private setGravityConsent(allowed: boolean): void {
-    this.gravityAllowed = false;
-    this.stopGravity();
-    this.send({ type: 'icons', angle: 0 });
-    try {
-      const store = preferences.getPreferencesSync(this.context(), { name: 'privacy' });
-      store.putSync('gravityConsent20261010', allowed ? 'enabled' : 'disabled');
-      store.flushSync();
-      this.privacyChoiceKnown = true;
-      this.gravityAllowed = allowed;
-      this.startGravity();
-    } catch (e) {
-      // Never start reading when saving the user's choice fails.
-      this.alert(this.text('privacy_title'), this.text('privacy_save_error'));
-    }
   }
   private applySize(value: number): void {
     this.sizeValue = Math.max(2, Math.min(256, Math.round(value)));
@@ -723,9 +649,6 @@ struct Index {
         }
       }
       .cachedCount(8).scrollBar(BarState.Auto).edgeEffect(EdgeEffect.Spring).layoutWeight(1).width('100%')
-      Text($r('app.string.privacy_title'))
-        .fontSize(15).fontColor(TINT).padding({ top: 10, bottom: 10 })
-        .onClick(() => this.privacySettings())
       Text(this.librarySave ? $r('app.string.save_to_files') : $r('app.string.open_from_files'))
         .fontSize(17).fontColor(TINT).padding({ top: 14, bottom: 14 + this.safeBottom })
         .onClick(() => this.systemFile())

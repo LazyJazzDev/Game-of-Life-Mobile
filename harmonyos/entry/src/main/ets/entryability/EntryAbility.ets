@@ -4,7 +4,6 @@ import native from 'libgameoflife.so';
 
 export default class EntryAbility extends UIAbility {
   onCreate(): void {
-    AppStorage.setOrCreate('gameForeground', false);
     this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
   }
   onWindowStageCreate(stage: window.WindowStage): void {
@@ -25,7 +24,7 @@ export default class EntryAbility extends UIAbility {
       AppStorage.setOrCreate('gameStartupError', `Window setup: ${e}`);
     }
   }
-  onForeground(): void { AppStorage.setOrCreate('gameForeground', true); native.command('{"type":"active","value":true}'); }
-  onBackground(): void { AppStorage.setOrCreate('gameForeground', false); native.command('{"type":"active","value":false}'); }
-  onWindowStageDestroy(): void { AppStorage.setOrCreate('gameForeground', false); native.command('{"type":"stop"}'); }
+  onForeground(): void { native.command('{"type":"active","value":true}'); }
+  onBackground(): void { native.command('{"type":"active","value":false}'); }
+  onWindowStageDestroy(): void { native.command('{"type":"stop"}'); }
 }

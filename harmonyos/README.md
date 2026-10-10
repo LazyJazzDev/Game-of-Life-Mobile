@@ -49,35 +49,21 @@ The package is written to `build/outputs/default/harmonyos-default-signed.app`.
 ## Behavior
 
 - The page opens the game as soon as the bundled resources are extracted.
-- The interface keeps the orientation the game opened in; the gravity sensor turns
-  the icons only after explicit opt-in and only while the page is visible in the
-  foreground. Declining keeps icons fixed without restricting gameplay. The
-  pattern-library footer provides Privacy & Icon Rotation to read the notice
-  and revoke consent. Old installations without a consent record default to off.
+- The interface and button icons keep the orientation the game opened in.
+  HarmonyOS does not subscribe to gravity sensors or offer sensor-based rotation.
 - One finger edits cells or pans an enlarged grid; two fingers pan and pinch.
 - Open and save start in the in-app pattern library (736 Life Lexicon patterns in
   folders, plus My Patterns); the system document picker is one link away.
 - Built-in patterns are adapted from the Life Lexicon by Stephen A. Silver et al.,
   licensed under CC BY-SA 3.0 (`../LongMarch/demo/gol/patterns/LICENSE.md`).
 
-## Privacy regression check
+## Privacy verification
 
-The consent test executes the production page methods with storage and sensor
-substitutes (no real sensor access):
+The HarmonyOS implementation contains no sensor subscriptions, consent prompt or
+rotation preference. Verify an upgrade from the earlier consent-enabled build:
+the game opens directly and icons stay fixed even if rotation was previously
+enabled. Check normal editing, pattern loading and saving on a real phone.
 
-```sh
-node harmonyos/tests/privacy_consent.cjs <typescript/lib/typescript.js>
-```
-
-Also compile `default@CompileArkTS`. Before shipping, verify on a real phone:
-first launch and upgrade start with no subscription; declining survives restart;
-accepting enables icon rotation; background/page-hide stops reading; returning
-resumes only when consent remains enabled; revoking stops immediately and stays
-revoked after restart. The privacy entry is in the pattern-library footer.
-
-AppGallery privacy labels: collects personal information = Yes; purpose = App
-functionality; category = Device information; item = Gravity sensor information.
-Do not select analytics, advertising, third-party disclosure or cross-border
-transfer for these locally processed readings. Keep the public policy and the
-in-app English/Chinese disclosures aligned. No new manifest permission is needed
-for GRAVITY; absence of a permission prompt is not absence of data processing.
+When submitting this sensor-free package, update AppGallery privacy labels and
+the listing to remove gravity sensor collection. Do not resubmit the older
+sensor-reading package with labels claiming that it does not read sensors.

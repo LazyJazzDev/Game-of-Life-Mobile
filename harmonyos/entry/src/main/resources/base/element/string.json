@@ -131,34 +131,6 @@
     {
       "name": "ok",
       "value": "OK"
-    },
-    {
-      "name": "privacy_title",
-      "value": "Privacy & Icon Rotation"
-    },
-    {
-      "name": "gravity_enabled",
-      "value": "Icon rotation is currently on."
-    },
-    {
-      "name": "gravity_disabled",
-      "value": "Icon rotation is currently off."
-    },
-    {
-      "name": "gravity_decline",
-      "value": "Keep / turn off"
-    },
-    {
-      "name": "gravity_agree",
-      "value": "Agree and enable"
-    },
-    {
-      "name": "privacy_save_error",
-      "value": "Your choice could not be saved. Sensor reading is off for this session. Please try again before closing the app."
-    },
-    {
-      "name": "privacy_policy",
-      "value": "Privacy policy · October 10, 2026\nGame of Life by LazyJazzDev works offline, without accounts, ads or analytics.\nOptional icon rotation: only after you agree, the app subscribes to HarmonyOS gravity sensor readings (x/y/z gravity components; x and y are used) at a requested interval of 200 ms, while the game is visible in the foreground. Readings turn the button icons with the device; they are processed immediately on this device, never saved, uploaded, shared or used for identification or advertising.\nDeclining leaves the icons fixed and does not affect playing, editing or saving patterns. You can withdraw consent here at any time; reading stops on disabling or leaving the foreground. Your choice is saved locally.\nSaved patterns stay in this app's storage; the system file picker accesses only files you select. No camera, microphone, location, contacts or network permission is requested. No third-party tracking SDKs are used. These practices apply to users of all ages.\nFull policy: https://lazyjazzdev.github.io/Game-of-Life-Mobile/privacy/\nContact: https://github.com/LazyJazzDev/Game-of-Life-Mobile/issues"
     }
   ]
 }

@@ -131,34 +131,6 @@
     {
       "name": "ok",
       "value": "好"
-    },
-    {
-      "name": "privacy_title",
-      "value": "隐私与图标转向"
-    },
-    {
-      "name": "gravity_enabled",
-      "value": "当前：图标自动转向已开启。"
-    },
-    {
-      "name": "gravity_disabled",
-      "value": "当前：图标自动转向已关闭。"
-    },
-    {
-      "name": "gravity_decline",
-      "value": "不开启／关闭"
-    },
-    {
-      "name": "gravity_agree",
-      "value": "同意并开启"
-    },
-    {
-      "name": "privacy_save_error",
-      "value": "未能保存您的选择，本次已停止读取传感器。请在退出应用前重试。"
-    },
-    {
-      "name": "privacy_policy",
-      "value": "隐私政策 · 2026年10月10日\nLazyJazzDev 开发的「生命游戏」离线运行，无需账号，不含广告或统计分析。\n可选的图标自动转向：仅在您同意后，应用在游戏前台可见时通过 HarmonyOS 重力传感器接口订阅重力分量（接口返回 x/y/z，实际使用 x、y），请求采样间隔为200毫秒，仅用于让按钮图标随设备转向。数据仅在本机内存中即时处理，不保存、不上传、不共享，不用于识别身份、分析或广告。\n拒绝后图标保持固定，不影响游戏、编辑或保存图案。您可随时在此关闭并撤回同意；关闭或进入后台后停止读取。您的选择仅保存在本机。\n保存的图案仅存于应用存储空间；系统文件选择器仅访问您主动选取的文件。不申请相机、麦克风、位置、通讯录或网络权限，不使用第三方跟踪SDK。上述规则适用于所有年龄的用户。\n完整政策：https://lazyjazzdev.github.io/Game-of-Life-Mobile/privacy/\n联系：https://github.com/LazyJazzDev/Game-of-Life-Mobile/issues"
     }
   ]
 }
