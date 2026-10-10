@@ -19,6 +19,10 @@ LongMarch's Vulkan backend into an XComponent surface.
 
 ## Build
 
+The minimum supported system is HarmonyOS 7.0 (API 26), configured as
+`compatibleSdkVersion: "26.0.0"`. The AGC resubmission retains version 1.0.1
+(version code 1000001).
+
 Install the shared mobile dependencies once (`../mobile`), into `../out/mobile/deps`
 or a directory named by `LONGMARCH_MOBILE_DEPS`. Then stage the game's prepared
 resources, which hold the pattern library and the SPIR-V the game requests:
