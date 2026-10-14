@@ -204,3 +204,9 @@ only a still-pending native request.
 ```sh
 /Applications/DevEco-Studio.app/Contents/tools/node/bin/node harmonyos/tests/file_recovery.cjs
 ```
+
+Build 13 requests system consent automatically on launch when no current consent
+exists. It does not show an intermediate consent page. Acceptance starts the
+game; cancellation exits. Only service failures expose retry/exit controls.
+`harmonyos/tests/privacy_startup.cjs` checks automatic launch and duplicate-event,
+acceptance, cancellation, failure and late-completion behavior.

@@ -141,14 +141,6 @@
       "value": "暂时无法获取隐私信息，请确认华为应用市场可正常使用后重试。"
     },
     {
-      "name": "privacy_wait",
-      "value": "请在系统提示中阅读隐私声明后继续。"
-    },
-    {
-      "name": "privacy_continue",
-      "value": "继续"
-    },
-    {
       "name": "privacy_exit",
       "value": "退出"
     },
@@ -171,6 +163,10 @@
     {
       "name": "file_operation_failed",
       "value": "无法打开或保存文件，请检查文件及访问权限后重试。"
+    },
+    {
+      "name": "privacy_retry",
+      "value": "重试"
     }
   ]
 }

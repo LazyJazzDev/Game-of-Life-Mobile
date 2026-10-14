@@ -124,6 +124,8 @@ function rectEnd(start: number, size: number): number {
 struct Index {
   private privacy: HostedPrivacy = new HostedPrivacy();
   private pageAlive: boolean = false;
+  private privacyObserved: boolean = false;
+  private privacyRequested: boolean = false;
   @State private privacyAgreed: boolean = false;
   @State private privacyBusy: boolean = false;
   @State private privacyError: string = '';
@@ -173,12 +175,16 @@ struct Index {
   aboutToAppear(): void {
     this.pageAlive = true;
     // Subscribe before querying so agreement during startup cannot be missed.
-    this.privacy.observe(() => this.checkPrivacy()).then(() => this.checkPrivacy())
+    this.privacy.observe(() => this.checkPrivacy()).then(() => {
+      if (!this.pageAlive) return;
+      this.privacyObserved = true;
+      this.checkPrivacy();
+    })
       .catch(() => { this.privacyError = this.text('privacy_unavailable'); });
   }
 
   private checkPrivacy(): void {
-    if (!this.pageAlive) return;
+    if (!this.pageAlive || !this.privacyObserved) return;
     try {
       const agreed = this.privacy.isAgreed();
       this.privacyError = '';
@@ -188,6 +194,7 @@ struct Index {
       } else if (!agreed && this.privacyAgreed) {
         this.stopGame();
       }
+      if (!agreed && !this.privacyRequested) this.requestPrivacy();
     } catch (e) {
       if (this.privacyAgreed) this.stopGame();
       this.privacyError = this.text('privacy_unavailable');
@@ -195,11 +202,21 @@ struct Index {
   }
 
   private async requestPrivacy(): Promise<void> {
-    if (this.privacyBusy) return;
+    if (!this.pageAlive || this.privacyBusy) return;
+    this.privacyRequested = true;
     this.privacyBusy = true;
+    this.privacyError = '';
     try {
+      if (!this.privacyObserved) {
+        await this.privacy.observe(() => this.checkPrivacy());
+        this.privacyObserved = true;
+      }
       await this.privacy.request(this.context());
+      if (!this.pageAlive) return;
       this.checkPrivacy();
+      if (!this.privacyAgreed && this.privacyError.length === 0) {
+        await this.context().terminateSelf();
+      }
     } catch (e) { this.privacyError = this.text('privacy_unavailable'); }
     finally { this.privacyBusy = false; }
   }
@@ -774,13 +791,12 @@ struct Index {
           .width('100%').height('100%')
           .onAreaChange((oldArea: Area, area: Area) => this.canvasArea(area))
       }
-      if (!this.privacyAgreed) {
+      if (!this.privacyAgreed && this.privacyError.length > 0) {
         Column({ space: 20 }) {
           Text($r('app.string.privacy_title')).fontSize(22).fontColor(LABEL)
-          Text(this.privacyError || this.text('privacy_wait')).fontSize(16).fontColor(SECONDARY)
-          Button($r('app.string.privacy_continue')).enabled(!this.privacyBusy)
+          Text(this.privacyError).fontSize(16).fontColor(SECONDARY)
+          Button($r('app.string.privacy_retry')).enabled(!this.privacyBusy)
             .onClick(() => this.requestPrivacy())
-          Button($r('app.string.privacy_title')).onClick(() => this.showPrivacy())
           Button($r('app.string.privacy_exit')).onClick(() => {
             this.context().terminateSelf().catch(() => { this.privacyError = this.text('privacy_exit_failed'); });
           })

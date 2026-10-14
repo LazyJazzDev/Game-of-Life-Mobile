@@ -141,14 +141,6 @@
       "value": "Privacy information is unavailable. Please check that AppGallery is available and try again."
     },
     {
-      "name": "privacy_wait",
-      "value": "Please read the privacy policy in the system prompt before continuing."
-    },
-    {
-      "name": "privacy_continue",
-      "value": "Continue"
-    },
-    {
       "name": "privacy_exit",
       "value": "Exit"
     },
@@ -171,6 +163,10 @@
     {
       "name": "file_operation_failed",
       "value": "Unable to open or save the file. Check the file and access permissions, then try again."
+    },
+    {
+      "name": "privacy_retry",
+      "value": "Retry"
     }
   ]
 }
