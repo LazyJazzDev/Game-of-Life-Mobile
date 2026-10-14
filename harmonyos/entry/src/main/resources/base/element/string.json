@@ -163,6 +163,14 @@
     {
       "name": "privacy_revoke_message",
       "value": "The app will close and ask for your consent next time. Saved patterns will not be deleted."
+    },
+    {
+      "name": "invalid_pattern_file",
+      "value": "This is not a valid saved pattern file. Choose a valid .cells file. Your current simulation has been preserved."
+    },
+    {
+      "name": "file_operation_failed",
+      "value": "Unable to open or save the file. Check the file and access permissions, then try again."
     }
   ]
 }

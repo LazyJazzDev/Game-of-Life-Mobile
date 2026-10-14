@@ -191,3 +191,16 @@ Controller tests (uses DevEco's bundled TypeScript compiler):
 
 References: [setup](https://developer.huawei.com/consumer/cn/doc/app/agc-help-privacy-policy-app-0000002282162168),
 [client integration](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/store-privacy).
+
+Hosted policy configured in the AGC 1.0.1 draft:
+https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=2060870700201172672
+
+Build 12 keeps versionName 1.0.1 and versionCode 1000001. File-operation
+failures use `fileError`, separate from fatal renderer `error`. A malformed
+import preserves the current grid, releases the file operation, and reports a
+localized message without stopping rendering. A picker or IO failure cancels
+only a still-pending native request.
+
+```sh
+/Applications/DevEco-Studio.app/Contents/tools/node/bin/node harmonyos/tests/file_recovery.cjs
+```

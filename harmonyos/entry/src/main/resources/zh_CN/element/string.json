@@ -163,6 +163,14 @@
     {
       "name": "privacy_revoke_message",
       "value": "撤回后将退出应用，下次打开时会重新提示。已保存的图案不会删除。"
+    },
+    {
+      "name": "invalid_pattern_file",
+      "value": "打开的不是有效的存档文件，请选择正确的 .cells 文件。当前模拟已保留，可以继续使用。"
+    },
+    {
+      "name": "file_operation_failed",
+      "value": "无法打开或保存文件，请检查文件及访问权限后重试。"
     }
   ]
 }

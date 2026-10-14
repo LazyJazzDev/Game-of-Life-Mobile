@@ -74,6 +74,7 @@ interface NativeCommand {
 class NativeStatus {
   ready: boolean = false;
   error: string = '';
+  fileError: string = '';
   device: string = '';
   resources: string = '';
   fps: number = 0;
@@ -411,7 +412,10 @@ struct Index {
       await new Promise<void>((resolve) => setTimeout(resolve, 100));
       const value = JSON.parse(native.status()) as NativeStatus;
       if (value.fileRevision >= id) {
-        if (value.error.length > 0) throw new Error(value.error);
+        if (value.fileError.length > 0) {
+          const invalid = value.fileError.startsWith('Pattern');
+          throw new Error(this.text(invalid ? 'invalid_pattern_file' : 'file_operation_failed'));
+        }
         return;
       }
       if (!this.opened) return;
@@ -510,8 +514,13 @@ struct Index {
     try {
       await work();
     } catch (e) {
-      this.alert(this.text('game_error'), `Files: ${e}`);
-      try { await this.completeFile(''); } catch (cancelError) { /* Keep the original error visible. */ }
+      // CompleteHostedFile already restores the game after a parse failure.
+      // Only cancel if the picker/IO failed before delivering a result.
+      const status = JSON.parse(native.status()) as NativeStatus;
+      if (status.fileRequest > 0) {
+        try { await this.completeFile(''); } catch (cancelError) { /* Keep the original error. */ }
+      }
+      this.alert(this.text('game_error'), e instanceof Error ? e.message : this.text('file_operation_failed'));
     }
     finally { this.fileBusy = false; }
   }
