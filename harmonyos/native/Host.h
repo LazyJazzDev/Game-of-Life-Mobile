@@ -47,7 +47,7 @@ class Host {
   OHNativeWindow *window_ = nullptr;
   uint32_t width_ = 0, height_ = 0;
   std::filesystem::path resources_;
-  std::string error_;
+  std::string error_, file_error_;
   bool ready_ = false, active_ = true, dirty_ = false;
   int size_axis_ = 0, size_value_ = 64, file_revision_ = 0;
   uint64_t frames_ = 0;

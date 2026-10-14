@@ -119,6 +119,14 @@ function rectEnd(start: number, size: number): number {
   return size > 0 ? start + size : 0;
 }
 
+class FileOperationError extends Error {
+  resourceKey: string;
+  constructor(resourceKey: string) {
+    super(resourceKey);
+    this.resourceKey = resourceKey;
+  }
+}
+
 @Entry
 @Component
 struct Index {
@@ -429,15 +437,15 @@ struct Index {
       await new Promise<void>((resolve) => setTimeout(resolve, 100));
       const value = JSON.parse(native.status()) as NativeStatus;
       if (value.fileRevision >= id) {
-        if (value.fileError.length > 0) {
+        if ((value.fileError ?? '').length > 0) {
           const invalid = value.fileError.startsWith('Pattern');
-          throw new Error(this.text(invalid ? 'invalid_pattern_file' : 'file_operation_failed'));
+          throw new FileOperationError(invalid ? 'invalid_pattern_file' : 'file_operation_failed');
         }
         return;
       }
       if (!this.opened) return;
     }
-    throw new Error('File operation timed out');
+    throw new FileOperationError('file_operation_failed');
   }
   private patternDirectory(): string {
     const directory = `${this.context().filesDir}/patterns`;
@@ -537,7 +545,7 @@ struct Index {
       if (status.fileRequest > 0) {
         try { await this.completeFile(''); } catch (cancelError) { /* Keep the original error. */ }
       }
-      this.alert(this.text('game_error'), e instanceof Error ? e.message : this.text('file_operation_failed'));
+      this.alert(this.text('game_error'), this.text(e instanceof FileOperationError ? e.resourceKey : 'file_operation_failed'));
     }
     finally { this.fileBusy = false; }
   }
@@ -577,7 +585,7 @@ struct Index {
       fs.unlinkSync(`${this.patternDirectory()}/${pattern.name}.cells`);
       this.refreshPatterns();
       this.rebuildRows();
-    } catch (e) { this.alert(this.text('game_error'), `Files: ${e}`); }
+    } catch (e) { this.alert(this.text('game_error'), this.text('file_operation_failed')); }
   }
   private systemFile(): void {
     const save = this.librarySave;
@@ -586,7 +594,7 @@ struct Index {
       const dialog = new picker.DocumentViewPicker(this.context());
       if (!save) {
         const options = new picker.DocumentSelectOptions(); options.maxSelectNumber = 1;
-        const uris = await dialog.select(options);
+        const uris = (await dialog.select(options)) ?? [];
         if (uris.length === 0) { await this.completeFile(''); return; }
         const file = fs.openSync(uris[0], fs.OpenMode.READ_ONLY);
         try { await fs.copyFile(file.fd, temp); } finally { fs.closeSync(file); }
@@ -594,7 +602,7 @@ struct Index {
       } else {
         await this.completeFile(temp);
         const options = new picker.DocumentSaveOptions(); options.newFileNames = ['Life.cells'];
-        const uris = await dialog.save(options);
+        const uris = (await dialog.save(options)) ?? [];
         if (uris.length > 0) {
           const file = fs.openSync(uris[0], fs.OpenMode.READ_WRITE);
           try { await fs.copyFile(temp, file.fd); } finally { fs.closeSync(file); }

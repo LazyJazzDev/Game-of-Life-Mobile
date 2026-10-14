@@ -210,3 +210,9 @@ exists. It does not show an intermediate consent page. Acceptance starts the
 game; cancellation exits. Only service failures expose retry/exit controls.
 `harmonyos/tests/privacy_startup.cjs` checks automatic launch and duplicate-event,
 acceptance, cancellation, failure and late-completion behavior.
+
+Build 14 also updates this application's `harmonyos/native/Host.cpp` (which is
+built separately from LongMarch's demo host) to publish recoverable `fileError`.
+Empty/undefined picker results cancel silently. File alerts use localized
+resource keys, never raw platform exception text. Picker cancellation coverage
+includes both open/save and empty, null and undefined results.

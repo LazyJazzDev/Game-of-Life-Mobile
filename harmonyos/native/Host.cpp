@@ -221,9 +221,8 @@ void Host::Execute(const std::string &json) {
     size_axis_ = 0;
   } else if (type == "file" && game_) {
     file_revision_ = int(Number(c, "request"));
-    auto error = game_->CompleteFile(Text(c, "path"));
-    if (!error.empty())
-      throw std::runtime_error(error);
+    // User file errors must not stop the rendering loop.
+    file_error_ = game_->CompleteFile(Text(c, "path"));
     dirty_ = true;
   } else if (type == "icons" && game_) {
     game_->SetIconOrientation(Number(c, "angle"));
@@ -303,6 +302,7 @@ void Host::Publish() {
   w.Key("ready");
   w.Bool(ready_);
   text("error", error_);
+  text("fileError", file_error_);
   text("resources", resources_.string());
   number("fps", fps_);
   number("frames", frames_);
