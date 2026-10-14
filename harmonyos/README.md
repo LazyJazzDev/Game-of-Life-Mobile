@@ -153,3 +153,41 @@ The older artifacts named `1000002` through `1000009` incorrectly used
 `versionCode` as a build counter; those names are historical evidence only.
 Compatibility-only cloud packages must be identified separately from release
 packages when their minimum OS differs. Do not submit these diagnostic packages.
+
+### Hosted privacy consent (build 11)
+
+The HarmonyOS app uses AppGallery Kit's hosted privacy service. Configure a
+HarmonyOS-only privacy statement under Distribution > More services > Agreement
+services, generate it, and associate it with the release in AGC before publishing.
+The app does not provide a second consent dialog or fall back to a local consent
+flag. Native initialization waits for consent matching the current hosted policy
+ID and version. Missing hosting configuration or a service error leaves the app
+on a retry/exit screen. This is intentional; do not publish this build without
+associating the hosted policy.
+
+The pattern library footer provides **Privacy policy** and **Withdraw consent**.
+The policy URL comes from `getAppPrivacyMgmtInfo()`, rather than the shared iOS
+privacy webpage. Withdrawal preserves saved patterns and exits the app; the
+system asks for consent again on the next launch.
+
+For an unpublished app, Huawei requires a **debug** build on a physical device
+with working AppGallery and network access. In a local debug-only copy of the
+entry module metadata, set `appgallery_privacy_hosted` to `"1"` and
+`appgallery_privacy_link_privacy_statement` to the generated HTTPS policy URL.
+Restore the module file after building; do not treat a side-loaded release build
+as a test of production hosting. Simulators do not support this service.
+
+Before release, test fresh installation, accept/decline, relaunch without a
+second prompt, policy viewing, withdrawal, updated policy consent, and offline
+relaunch after acceptance. Check that no native resources are initialized before
+consent and saved patterns survive withdrawal. Huawei's documentation does not
+specify all offline cases; these must be verified on-device.
+
+Controller tests (uses DevEco's bundled TypeScript compiler):
+
+```sh
+/Applications/DevEco-Studio.app/Contents/tools/node/bin/node harmonyos/tests/hosted_privacy.cjs
+```
+
+References: [setup](https://developer.huawei.com/consumer/cn/doc/app/agc-help-privacy-policy-app-0000002282162168),
+[client integration](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/store-privacy).

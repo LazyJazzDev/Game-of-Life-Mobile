@@ -7,11 +7,6 @@ export default class EntryAbility extends UIAbility {
     this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
   }
   onWindowStageCreate(stage: window.WindowStage): void {
-    try {
-      native.initialize(this.context.resourceManager, this.context.filesDir);
-    } catch (e) {
-      AppStorage.setOrCreate('gameStartupError', `Initialization: ${e}`);
-    }
     this.configureWindow(stage);
   }
   private async configureWindow(stage: window.WindowStage): Promise<void> {
@@ -26,7 +21,9 @@ export default class EntryAbility extends UIAbility {
       AppStorage.setOrCreate('gameStartupError', `Window setup: ${e}`);
     }
   }
-  onForeground(): void { native.command('{"type":"active","value":true}'); }
-  onBackground(): void { native.command('{"type":"active","value":false}'); }
-  onWindowStageDestroy(): void { native.command('{"type":"stop"}'); }
+  onForeground(): void {
+    AppStorage.setOrCreate('privacyForeground', Date.now());
+    if (AppStorage.get<boolean>('privacyNativeReady')) native.command('{"type":"active","value":true}'); }
+  onBackground(): void { if (AppStorage.get<boolean>('privacyNativeReady')) native.command('{"type":"active","value":false}'); }
+  onWindowStageDestroy(): void { if (AppStorage.get<boolean>('privacyNativeReady')) native.command('{"type":"stop"}'); }
 }

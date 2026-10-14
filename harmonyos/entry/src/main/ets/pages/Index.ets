@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import native from 'libgameoflife.so';
+import { HostedPrivacy } from '../privacy/HostedPrivacy';
 
 interface PatternFile { name: string; modified: number; }
 // A named pattern from the built-in Life Lexicon library (demo/gol/patterns/library.json).
@@ -120,6 +121,12 @@ function rectEnd(start: number, size: number): number {
 @Entry
 @Component
 struct Index {
+  private privacy: HostedPrivacy = new HostedPrivacy();
+  private pageAlive: boolean = false;
+  @State private privacyAgreed: boolean = false;
+  @State private privacyBusy: boolean = false;
+  @State private privacyError: string = '';
+  @StorageLink('privacyForeground') @Watch('checkPrivacy') private privacyForeground: number = 0;
   // The game opens once the bundled resources are ready.
   @State private opened: boolean = false;
   @State private stats: NativeStatus = new NativeStatus();
@@ -158,9 +165,88 @@ struct Index {
   private text(name: string, ...args: (string | number)[]): string {
     return this.context().resourceManager.getStringByNameSync(name, ...args);
   }
-  private send(c: NativeCommand): void { native.command(JSON.stringify(c)); }
+  private send(c: NativeCommand): void {
+    if (AppStorage.get<boolean>('privacyNativeReady')) native.command(JSON.stringify(c));
+  }
 
   aboutToAppear(): void {
+    this.pageAlive = true;
+    // Subscribe before querying so agreement during startup cannot be missed.
+    this.privacy.observe(() => this.checkPrivacy()).then(() => this.checkPrivacy())
+      .catch(() => { this.privacyError = this.text('privacy_unavailable'); });
+  }
+
+  private checkPrivacy(): void {
+    if (!this.pageAlive) return;
+    try {
+      const agreed = this.privacy.isAgreed();
+      this.privacyError = '';
+      if (agreed && !this.privacyAgreed) {
+        this.privacyAgreed = true;
+        this.startGame();
+      } else if (!agreed && this.privacyAgreed) {
+        this.stopGame();
+      }
+    } catch (e) {
+      if (this.privacyAgreed) this.stopGame();
+      this.privacyError = this.text('privacy_unavailable');
+    }
+  }
+
+  private async requestPrivacy(): Promise<void> {
+    if (this.privacyBusy) return;
+    this.privacyBusy = true;
+    try {
+      await this.privacy.request(this.context());
+      this.checkPrivacy();
+    } catch (e) { this.privacyError = this.text('privacy_unavailable'); }
+    finally { this.privacyBusy = false; }
+  }
+
+  private async showPrivacy(): Promise<void> {
+    try { await this.privacy.showPolicy(this.context()); }
+    catch (e) { this.alert(this.text('privacy_title'), this.text('privacy_unavailable')); }
+  }
+
+  private confirmRevoke(): void {
+    this.getUIContext().showAlertDialog({
+      title: this.text('privacy_revoke'), message: this.text('privacy_revoke_message'),
+      primaryButton: { value: this.text('cancel'), action: () => {} },
+      secondaryButton: { value: this.text('privacy_revoke'), action: () => {
+        try {
+          this.privacy.revoke();
+          this.stopGame();
+          this.context().terminateSelf().catch(() => { this.privacyError = this.text('privacy_exit_failed'); });
+        } catch (e) { this.alert(this.text('privacy_title'), this.text('privacy_unavailable')); }
+      } }
+    });
+  }
+
+  private stopGame(): void {
+    if (this.timer >= 0) clearInterval(this.timer);
+    this.timer = -1;
+    this.libraryHandled = true;
+    this.libraryVisible = false;
+    if (this.win) {
+      this.win.off('avoidAreaChange');
+      this.win.off('windowSizeChange');
+      this.win = undefined;
+    }
+    this.leave();
+    this.privacyAgreed = false;
+    AppStorage.setOrCreate('privacyNativeReady', false);
+  }
+
+  private startGame(): void {
+    try {
+      native.initialize(this.context().resourceManager, this.context().filesDir);
+      AppStorage.setOrCreate('privacyNativeReady', true);
+    } catch (e) {
+      this.privacyAgreed = false;
+      this.privacyError = this.text('game_error');
+      this.alert(this.text('game_error'), `Initialization: ${e}`);
+      return;
+    }
     const startup = AppStorage.get<string>('gameStartupError') ?? '';
     if (startup.length > 0) this.alert(this.text('game_error'), startup);
     this.trackSafeArea();
@@ -179,19 +265,24 @@ struct Index {
     }, 250);
   }
   aboutToDisappear(): void {
+    this.pageAlive = false;
+    this.privacy.dispose();
     if (this.timer >= 0) clearInterval(this.timer);
     if (this.win) {
       this.win.off('avoidAreaChange');
       this.win.off('windowSizeChange');
     }
     this.leave();
+    AppStorage.setOrCreate('privacyNativeReady', false);
   }
 
   // Layout is fullscreen with hidden system bars, like the iOS app. Content that
   // iOS keeps inside its safe area avoids the camera cutout and gesture strip here.
   private async trackSafeArea(): Promise<void> {
     try {
-      this.win = await window.getLastWindow(this.context());
+      const win = await window.getLastWindow(this.context());
+      if (!this.pageAlive || !this.privacyAgreed) return;
+      this.win = win;
       this.updateSafeArea();
       this.win.on('avoidAreaChange', () => this.updateSafeArea());
       this.win.on('windowSizeChange', () => this.updateSafeArea());
@@ -642,6 +733,12 @@ struct Index {
         }
       }
       .cachedCount(8).scrollBar(BarState.Auto).edgeEffect(EdgeEffect.Spring).layoutWeight(1).width('100%')
+      Row({ space: 24 }) {
+        Text($r('app.string.privacy_title')).fontSize(14).fontColor(TINT)
+          .padding(10).onClick(() => this.showPrivacy())
+        Text($r('app.string.privacy_revoke')).fontSize(14).fontColor(SECONDARY)
+          .padding(10).onClick(() => this.confirmRevoke())
+      }.justifyContent(FlexAlign.Center).width('100%')
       Text(this.librarySave ? $r('app.string.save_to_files') : $r('app.string.open_from_files'))
         .fontSize(17).fontColor(TINT).padding({ top: 14, bottom: 14 + this.safeBottom })
         .onClick(() => this.systemFile())
@@ -663,10 +760,22 @@ struct Index {
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
       // The canvas fills the display; the page stays blank until resources are ready.
-      if (this.opened) {
+      if (this.privacyAgreed && this.opened) {
         Stack() { this.surface() }
           .width('100%').height('100%')
           .onAreaChange((oldArea: Area, area: Area) => this.canvasArea(area))
+      }
+      if (!this.privacyAgreed) {
+        Column({ space: 20 }) {
+          Text($r('app.string.privacy_title')).fontSize(22).fontColor(LABEL)
+          Text(this.privacyError || this.text('privacy_wait')).fontSize(16).fontColor(SECONDARY)
+          Button($r('app.string.privacy_continue')).enabled(!this.privacyBusy)
+            .onClick(() => this.requestPrivacy())
+          Button($r('app.string.privacy_title')).onClick(() => this.showPrivacy())
+          Button($r('app.string.privacy_exit')).onClick(() => {
+            this.context().terminateSelf().catch(() => { this.privacyError = this.text('privacy_exit_failed'); });
+          })
+        }.padding(32).width('100%').height('100%').justifyContent(FlexAlign.Center)
       }
     }
     .width('100%').height('100%').backgroundColor(BACKGROUND)
