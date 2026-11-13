@@ -2,7 +2,7 @@
 
 The 生命游戏 / Game of Life app (`net.lazyjazz.gameoflife`): an ArkUI page over the
 desktop Game of Life from LongMarch (`../LongMarch/demo/gol`), rendered with
-LongMarch's Vulkan backend into an XComponent surface.
+LongMarch RHI's Vulkan backend into an XComponent surface.
 
 ## Layout
 
@@ -216,3 +216,13 @@ built separately from LongMarch's demo host) to publish recoverable `fileError`.
 Empty/undefined picker results cancel silently. File alerts use localized
 resource keys, never raw platform exception text. Picker cancellation coverage
 includes both open/save and empty, null and undefined results.
+
+Version 1.0.2 uses `versionCode=1000002` and `buildVersion=15`, with HarmonyOS 6.0
+(API 20) as the minimum. Native rendering links `grassland/rhi` rather than the
+removed `graphics` module. The native surface presents images on the RHI main
+queue and retains each image until its presentation blit completes.
+
+Stage a newly prepared shader bundle with `prepare_resources.py`; preprocessed
+source and SPIR-V entries are required. The Vulkan backend requires Vulkan 1.2
+and timeline semaphores, and uses its render-pass fallback where dynamic rendering
+is unavailable. The byte-address shader loads retain the Mate 60 driver workaround.

@@ -10,6 +10,7 @@
 #include "demo/gol/game_of_life_gui.h"
 #include "demo/gol/simulation_clock.h"
 #include "demos/DemoSession.h"
+#include "grassland/rhi/shader_cache.h"
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
@@ -26,14 +27,20 @@ static void Settle(DemoSession &session) {
 }
 
 static std::vector<uint8_t> Pixels(DemoSession &session) {
-  auto extent = session.Image()->Extent();
+  auto extent = session.Image()->GetDesc();
   std::vector<uint8_t> pixels(extent.width * extent.height * 4);
-  session.Image()->DownloadData(pixels.data());
+  grassland::rhi::ObjPtr<grassland::rhi::ICommandContext> context = session.Game()->Queue()->CreateCommandContext();
+  grassland::rhi::ObjPtr<grassland::rhi::IDownloadToken> download = context->CmdDownloadImage(session.Image());
+  grassland::rhi::ObjPtr<grassland::rhi::ISubmissionToken> submission = context->Submit();
+  Check(submission && submission->WaitHost() && download && download->CopyTo(pixels.data(), pixels.size()),
+        "Readback failed");
   return pixels;
 }
 
 static void CheckListenerMutation() {
-  life_demo::Application app("listener check", 32, 32, grassland::graphics::BACKEND_API_DEFAULT, true);
+  life_demo::Application app("listener check", 32, 32, grassland::rhi::BACKEND_API_DEFAULT, true);
+
+  Check(app.InitializeHosted(), "Listener host initialization failed");
 
   struct Probe : life_demo::Listener {
     explicit Probe(life_demo::Application *app) : Listener(app) {
@@ -52,11 +59,11 @@ static void CheckListenerMutation() {
   auto first = std::less<life_demo::Listener *>{}(&a, &b) ? &a : &b;
   auto second = first == &a ? &b : &a;
   first->action = [&] { app.UnregisterListener(second); };
-  app.GetWindow()->SendPointer(1, 1);
+  app.HostedInput()->SendPointer(1, 1);
   Check(first->calls == 1 && second->calls == 0, "Removed listener received a stale snapshot event");
   first->action = {};
   app.RegisterListener(second);
-  app.GetWindow()->SendPointer(2, 2);
+  app.HostedInput()->SendPointer(2, 2);
   Check(first->calls == 2 && second->calls == 1, "Re-registered listener missed input");
   app.UnregisterListener(&a);
   app.UnregisterListener(&b);
@@ -65,6 +72,7 @@ static void CheckListenerMutation() {
 int main(int argc, char **argv) {
   try {
     Check(argc == 2, "usage: gol_games_check <resources>");
+    grassland::rhi::ConfigureShaderCache({std::filesystem::path(argv[1]) / "shaders", true, true});
     CheckListenerMutation();
     SimulationClock clock;
     int steps = 0;
@@ -84,7 +92,8 @@ int main(int argc, char **argv) {
       auto before = Pixels(game);
       Check(*std::max_element(before.begin(), before.end()) > 200, "Shared UI produced no visible geometry");
       auto *window = game.Game()->Window();
-      Check(window->IsHosted() && window->GetFramebufferSize() == glm::ivec2(640, 800), "Hosted resize failed");
+      Check(window->GLFWWindow() == nullptr && window->GetFramebufferSize() == glm::ivec2(640, 800),
+            "Hosted resize failed");
       window->CursorEnterEvent().InvokeCallbacks(true);
       game.Game()->SetIconOrientation(glm::half_pi<float>());
       Check(game.Game()->NextFrameDelay() == 0, "Orientation failed to wake paused Life");
@@ -109,7 +118,7 @@ int main(int argc, char **argv) {
       Check(Pixels(game) != before, "Desktop cell interaction did not change the rendered grid");
       auto edited = Pixels(game);
       window->MagnifyEvent().InvokeCallbacks(
-          grassland::graphics::MagnifyGesture{1.5, 320, 400, grassland::graphics::MagnifyPhase::kUpdate});
+          grassland::rhi::MagnifyGesture{1.5, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
       Settle(game);
       Check(Pixels(game) != edited, "Desktop grid magnification did not update rendering");
       // One finger (the left button) pans the enlarged grid; returning the same
@@ -219,20 +228,20 @@ int main(int argc, char **argv) {
       window->SendFocus(true);
       game.Resize(800, 480);
       Settle(game);
-      Check(game.Image()->Extent().width == 800 && game.Image()->Extent().height == 480,
+      Check(game.Image()->GetDesc().width == 800 && game.Image()->GetDesc().height == 480,
             "Shared UI orientation resize failed");
       std::cout << "PASS gol shared desktop renderer, input, animation, focus and orientation\n";
     }
     {
       // Foldable surfaces change size without changing their pixel density.
-      life_demo::GameOfLife life("fold layout", 360, 780, 64, 64, grassland::graphics::BACKEND_API_METAL, true);
+      life_demo::GameOfLife life("fold layout", 360, 780, 64, 64, grassland::rhi::BACKEND_API_METAL, true);
       life.InitializeHosted();
       life.EnableNativeSizeControls();
       for (float density : {1.0f, 2.0f, 3.0f}) {
         life.SetControlPixelSize(40.0f * density);
         for (auto size : {glm::ivec2{360, 780}, glm::ivec2{660, 780}, glm::ivec2{1000, 780}, glm::ivec2{780, 1000}}) {
           auto pixels = glm::ivec2(glm::vec2(size) * density);
-          life.GetWindow()->UpdateHostedSize(pixels, pixels);
+          life.HostedInput()->UpdateHostedSize(pixels, pixels);
           life.RenderHostedFrame();
           const auto bounds = life.SizeControlBounds(1);
           const auto extent = glm::vec2(bounds.z - bounds.x, bounds.w - bounds.y) * glm::vec2(pixels);
@@ -241,7 +250,7 @@ int main(int argc, char **argv) {
           Check(bounds.x >= 0 && bounds.y >= 0 && bounds.z <= 1 && bounds.w <= 1,
                 "Fold layout placed controls outside the surface");
           const auto centre = glm::vec2(bounds.x + bounds.z, bounds.y + bounds.w) * 0.5f * glm::vec2(pixels);
-          auto *window = life.GetWindow();
+          auto *window = life.HostedInput();
           window->SendPointer(centre.x, centre.y);
           window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
           window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);

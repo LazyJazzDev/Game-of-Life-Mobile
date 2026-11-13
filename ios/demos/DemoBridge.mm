@@ -8,8 +8,9 @@
 #include <GLFW/glfw3.h>
 #include "DemoSession.h"
 #include "RenderQueue.h"
-#include "grassland/graphics/backend/metal/metal_core.h"
-#include "grassland/graphics/backend/metal/metal_image.h"
+#include "grassland/rhi/backend/metal/metal_device.h"
+#include "grassland/rhi/backend/metal/metal_image.h"
+#include "grassland/rhi/backend/metal/metal_queue.h"
 
 @implementation DemoRenderer {
   MTKView *_view;
@@ -68,8 +69,9 @@
       try {
         self->_session = std::make_unique<DemoSession>(resources.fileSystemRepresentation);
         self->_session->Game()->EnableNativeSizeControls();
-        auto core = static_cast<grassland::graphics::backend::MetalCore *>(self->_session->Core());
-        id<MTLDevice> device = (__bridge id<MTLDevice>)core->Device();
+        auto core =
+            grassland::rhi::QueryInterfacePtr<grassland::rhi::backend::metal::IMetalDevice>(self->_session->Device());
+        id<MTLDevice> device = (__bridge id<MTLDevice>)core->NativeDevice();
         NSString *source =
             @"#include <metal_stdlib>\nusing namespace metal;\n"
              "struct V{float4 p [[position]];float2 uv;};\n"
@@ -203,8 +205,8 @@
         self->_session->Game()->ResetClock();
     }
     if (kind == 6)
-      window->MagnifyEvent().InvokeCallbacks(grassland::graphics::MagnifyGesture{
-          value, x * size.x, y * size.y, grassland::graphics::MagnifyPhase::kUpdate});
+      window->MagnifyEvent().InvokeCallbacks(
+          grassland::rhi::MagnifyGesture{value, x * size.x, y * size.y, grassland::rhi::MagnifyPhase::kUpdate});
   });
 }
 
@@ -287,9 +289,12 @@
                 self.sizeRequest(sizeRequest.x, sizeRequest.y, sizeRect);
             });
           }
-          auto core = static_cast<grassland::graphics::backend::MetalCore *>(self->_session->Core());
-          auto image = static_cast<grassland::graphics::backend::MetalImage *>(self->_session->Image());
-          id<MTLCommandQueue> queue = (__bridge id<MTLCommandQueue>)core->Queue();
+          auto core =
+              grassland::rhi::QueryInterfacePtr<grassland::rhi::backend::metal::IMetalDevice>(self->_session->Device());
+          auto image =
+              grassland::rhi::QueryInterfacePtr<grassland::rhi::backend::metal::IMetalImage>(self->_session->Image());
+          id<MTLCommandQueue> queue =
+              (__bridge id<MTLCommandQueue>)core->GetNativeQueue(grassland::rhi::QUEUE_TYPE_MAIN)->NativeQueue();
           id<MTLCommandBuffer> command = [queue commandBuffer];
           MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
           pass.colorAttachments[0].texture = drawable.texture;
@@ -302,7 +307,7 @@
               setViewport:MTLViewport{(drawable.texture.width - width * fit) / 2,
                                       (drawable.texture.height - height * fit) / 2, width * fit, height * fit, 0, 1}];
           [encoder setRenderPipelineState:self->_presentPipeline];
-          [encoder setFragmentTexture:(__bridge id<MTLTexture>)image->Handle() atIndex:0];
+          [encoder setFragmentTexture:(__bridge id<MTLTexture>)image->NativeImage() atIndex:0];
           [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
           [encoder endEncoding];
           [command presentDrawable:drawable];
@@ -373,7 +378,7 @@
                   atomically:YES];
             }
           }
-          deviceName = [NSString stringWithUTF8String:core->DeviceName().c_str()];
+          deviceName = [NSString stringWithUTF8String:self->_session->Device()->Name().c_str()];
           if ((frames == 3 || !std::isfinite(nextFrameDelay)) &&
               NSProcessInfo.processInfo.environment[@"LONGMARCH_SMOKE_DEMO"]) {
             NSDictionary *result = @{

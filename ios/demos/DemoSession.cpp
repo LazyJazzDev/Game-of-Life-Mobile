@@ -1,9 +1,9 @@
 #include "DemoSession.h"
 
-#include "grassland/graphics/shader_cache.h"
+#include "grassland/rhi/shader_cache.h"
 
 using namespace grassland;
-using namespace grassland::graphics;
+using namespace grassland::rhi;
 
 DemoSession::DemoSession(const std::filesystem::path &resources, bool prepare, BackendAPI backend) {
   // A prepare build compiles Slang and writes the cache; apps only read it.
@@ -13,7 +13,7 @@ DemoSession::DemoSession(const std::filesystem::path &resources, bool prepare, B
 
 DemoSession::~DemoSession() {
   try {
-    Core()->WaitGPU();
+    game_->WaitGPU();
   } catch (...) {
   }
 }

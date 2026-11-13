@@ -2,24 +2,34 @@
 #include <native_window/external_window.h>
 #include <vulkan/vulkan.h>
 
-#include "grassland/graphics/backend/vulkan/vulkan_core.h"
-#include "grassland/graphics/backend/vulkan/vulkan_image.h"
+#include "grassland/rhi/backend/vulkan/vulkan_device.h"
+#include "grassland/rhi/backend/vulkan/vulkan_image.h"
 
 namespace longmarch::harmony {
 class Surface {
  public:
-  Surface(grassland::graphics::Core *core, OHNativeWindow *window);
+  static std::unique_ptr<Surface> Create(grassland::rhi::IDevice *device, OHNativeWindow *window, std::string &error);
   ~Surface();
-  void Resize(uint32_t width, uint32_t height);
+  bool Resize(uint32_t width, uint32_t height);
   // Blits the game's display-encoded image, scaled to fit, onto an SDR swapchain.
-  bool Present(grassland::graphics::Image *image);
+  bool Present(grassland::rhi::IImage *image);
+
+  const std::string &Error() const {
+    return error_;
+  }
 
  private:
+  Surface(grassland::rhi::IDevice *device, OHNativeWindow *window);
+  bool Initialize();
+  bool Check(VkResult result, const char *operation);
+  bool Fail(const std::string &message);
+  std::string error_;
   void ReleaseSwapchain();
 
   // Presentation work in flight. The blit waits for the acquired image and
   // signals presentation on the GPU, so the render thread never blocks on it.
   struct Frame {
+    grassland::rhi::ObjPtr<grassland::rhi::IImage> source;
     VkCommandBuffer commands = VK_NULL_HANDLE;
     VkSemaphore acquired = VK_NULL_HANDLE;
     VkSemaphore blitted = VK_NULL_HANDLE;
@@ -28,7 +38,7 @@ class Surface {
 
   static constexpr size_t kFramesInFlight = 2;
 
-  grassland::graphics::backend::VulkanCore *core_;
+  grassland::rhi::ObjPtr<grassland::rhi::backend::vulkan::IVulkanDevice> core_;
   OHNativeWindow *window_;
   VkSurfaceKHR surface_ = VK_NULL_HANDLE;
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;

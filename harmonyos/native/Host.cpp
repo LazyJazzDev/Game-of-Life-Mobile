@@ -9,8 +9,8 @@
 #include <fstream>
 #include <future>
 
-#include "grassland/graphics/sha256.h"
-#include "grassland/graphics/shader_cache.h"
+#include "grassland/rhi/sha256.h"
+#include "grassland/rhi/shader_cache.h"
 
 namespace longmarch::harmony {
 namespace {
@@ -48,7 +48,7 @@ std::string Raw(NativeResourceManager *manager, const std::string &name) {
 }
 
 std::string Digest(const std::string &data) {
-  grassland::graphics::detail::SHA256 hash;
+  grassland::rhi::detail::SHA256 hash;
   hash.Update(data);
   return hash.Finish();
 }
@@ -199,8 +199,8 @@ void Host::Execute(const std::string &json) {
     if (!ready_)
       throw std::runtime_error("Resources are still being prepared");
     // The app only reads the SPIR-V prepared offline (prepare_resources.py).
-    grassland::graphics::ConfigureShaderCache({resources_ / "shaders", true, false});
-    game_ = std::make_unique<DesktopGameSession>(grassland::graphics::BACKEND_API_VULKAN);
+    grassland::rhi::ConfigureShaderCache({resources_ / "shaders", true, false});
+    game_ = std::make_unique<DesktopGameSession>(grassland::rhi::BACKEND_API_VULKAN);
     game_->EnableNativeSizeControls();
     Resize();
     dirty_ = true;
@@ -248,8 +248,8 @@ void Host::Execute(const std::string &json) {
         game->ResetClock();
     }
     if (kind == 6)
-      window->MagnifyEvent().InvokeCallbacks(grassland::graphics::MagnifyGesture{
-          std::clamp(Number(c, "value", 1), .1, 10.0), x, y, grassland::graphics::MagnifyPhase::kUpdate});
+      window->MagnifyEvent().InvokeCallbacks(grassland::rhi::MagnifyGesture{
+          std::clamp(Number(c, "value", 1), .1, 10.0), x, y, grassland::rhi::MagnifyPhase::kUpdate});
     dirty_ = true;
   }
 }
@@ -257,8 +257,13 @@ void Host::Execute(const std::string &json) {
 void Host::Frame() {
   auto start = std::chrono::steady_clock::now();
   if (!surface_)
-    surface_ = std::make_unique<Surface>(game_->Core(), window_);
-  surface_->Resize(width_, height_);
+    surface_ = Surface::Create(game_->Device(), window_, error_);
+  if (!surface_)
+    return;
+  if (!surface_->Resize(width_, height_)) {
+    error_ = surface_->Error();
+    return;
+  }
   game_->Render();
   auto size = game_->TakeSizeControlRequest();
   if (size.x) {
@@ -266,6 +271,10 @@ void Host::Frame() {
     size_value_ = size.y;
   }
   const bool presented = surface_->Present(game_->Image());
+  if (!surface_->Error().empty()) {
+    error_ = surface_->Error();
+    return;
+  }
   const auto presented_at = std::chrono::steady_clock::now();
   if (presented) {
     const double interval =
@@ -310,7 +319,7 @@ void Host::Publish() {
   number("fileRevision", file_revision_);
   number("sizeAxis", size_axis_);
   number("sizeValue", size_value_);
-  text("device", game_ ? game_->Core()->DeviceName() : "");
+  text("device", game_ ? game_->Device()->Name() : "");
   w.EndObject();
   std::lock_guard<std::mutex> lock(status_mutex_);
   status_ = buffer.GetString();

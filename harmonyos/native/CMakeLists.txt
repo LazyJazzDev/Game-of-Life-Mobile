@@ -18,18 +18,18 @@ if(NOT EXISTS "${LONGMARCH_HEADERS}/glm/glm.hpp" OR NOT EXISTS "${LONGMARCH_HEAD
 endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
-# Engine: grassland utilities, graphics and the Vulkan backend, and the Life rules.
-file(GLOB UTIL "${ROOT}/code/grassland/util/*.cpp")
-file(GLOB GRAPHICS "${ROOT}/code/grassland/graphics/*.cpp")
-file(GLOB_RECURSE VULKAN "${ROOT}/code/grassland/graphics/backend/vulkan/helper/*.cpp")
-file(GLOB BACKEND "${ROOT}/code/grassland/graphics/backend/vulkan/*.cpp")
-list(FILTER BACKEND EXCLUDE REGEX "/vulkan_(window|imgui_assets)\\.cpp$")
-add_library(gol_engine STATIC ${UTIL} ${GRAPHICS} ${VULKAN} ${BACKEND}
+# RHI Vulkan backend; native ArkUI owns the window and presentation.
+file(GLOB UTIL CONFIGURE_DEPENDS "${ROOT}/code/grassland/util/*.cpp")
+file(GLOB RHI CONFIGURE_DEPENDS "${ROOT}/code/grassland/rhi/*.cpp" "${ROOT}/code/grassland/rhi/backend/*.cpp")
+list(FILTER RHI EXCLUDE REGEX "/backend_window.*\\.cpp$")
+file(GLOB BACKEND CONFIGURE_DEPENDS "${ROOT}/code/grassland/rhi/backend/vulkan/*.cpp")
+list(FILTER BACKEND EXCLUDE REGEX "/vulkan_window\\.cpp$")
+add_library(gol_engine STATIC ${UTIL} ${RHI} ${BACKEND}
   "${ROOT}/code/grassland/math/math_mesh.cxx" "${mikktspace_SOURCE_DIR}/mikktspace.c"
   "${ROOT}/demo/gol/game_of_life_lib/game_of_life_lib.cpp")
 target_include_directories(gol_engine PUBLIC "${ROOT}/code" "${ROOT}" "${CMAKE_CURRENT_SOURCE_DIR}"
   "${LONGMARCH_HEADERS}" "${LONGMARCH_HEADERS}/eigen3" "${LONGMARCH_HEADERS}/stb" "${mikktspace_SOURCE_DIR}")
-target_compile_definitions(gol_engine PUBLIC LONGMARCH_VULKAN_ENABLED LONGMARCH_HEADLESS
+target_compile_definitions(gol_engine PUBLIC LONGMARCH_VULKAN_ENABLED LONGMARCH_VMA_ENABLED LONGMARCH_HEADLESS
   FMT_HEADER_ONLY NDEBUG LONGMARCH_ASSETS_DIR="")
 # The app loads SPIR-V prepared offline; Slang is never linked.
 target_compile_definitions(gol_engine PRIVATE LONGMARCH_OFFLINE_SHADERS)
@@ -45,10 +45,6 @@ function(embed_shaders target directory output)
     DEPENDS ${shaders} "${CMAKE_CURRENT_SOURCE_DIR}/embed_shaders.py" VERBATIM)
   target_sources(${target} PRIVATE "${output}")
 endfunction()
-embed_shaders(gol_engine "${ROOT}/code/grassland/graphics" "${CMAKE_CURRENT_BINARY_DIR}/grassland/graphics/built_in_shaders.inl")
-set_source_files_properties("${ROOT}/code/grassland/graphics/shader.cpp" PROPERTIES
-  INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}/grassland/graphics")
-
 # The desktop Game of Life UI, hosted in the native window.
 file(GLOB_RECURSE gol_sources CONFIGURE_DEPENDS "${ROOT}/demo/gol/*.cpp")
 list(FILTER gol_sources EXCLUDE REGEX "/main\\.cpp$|/game_of_life_lib/")

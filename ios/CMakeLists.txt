@@ -24,11 +24,13 @@ if(NOT EXISTS "${GOL_HEADERS}/fmt/format.h" OR NOT EXISTS "${GOL_HEADERS}/eigen3
 endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
-# The LongMarch graphics core with its Metal backend, plus the Life rules.
-file(GLOB UTIL "${ROOT}/code/grassland/util/*.cpp")
-file(GLOB GRAPHICS "${ROOT}/code/grassland/graphics/*.cpp")
-file(GLOB METAL "${ROOT}/code/grassland/graphics/backend/metal/*.cpp")
-add_library(gol_engine STATIC ${UTIL} ${GRAPHICS} ${METAL}
+# RHI core and native Metal backend, without desktop window/ImGui implementations.
+file(GLOB UTIL CONFIGURE_DEPENDS "${ROOT}/code/grassland/util/*.cpp")
+file(GLOB RHI CONFIGURE_DEPENDS "${ROOT}/code/grassland/rhi/*.cpp" "${ROOT}/code/grassland/rhi/backend/*.cpp")
+list(FILTER RHI EXCLUDE REGEX "/backend_window.*\\.cpp$")
+file(GLOB METAL CONFIGURE_DEPENDS "${ROOT}/code/grassland/rhi/backend/metal/*.cpp" "${ROOT}/code/grassland/rhi/backend/metal/*.mm")
+list(FILTER METAL EXCLUDE REGEX "/metal_window\\.(cpp|mm)$")
+add_library(gol_engine STATIC ${UTIL} ${RHI} ${METAL}
   "${ROOT}/code/grassland/math/math_mesh.cxx" "${mikktspace_SOURCE_DIR}/mikktspace.c"
   "${ROOT}/demo/gol/game_of_life_lib/game_of_life_lib.cpp")
 target_include_directories(gol_engine PUBLIC "${ROOT}/code" "${GOL_HEADERS}" "${GOL_HEADERS}/eigen3"
@@ -36,17 +38,6 @@ target_include_directories(gol_engine PUBLIC "${ROOT}/code" "${GOL_HEADERS}" "${
 target_compile_definitions(gol_engine PUBLIC LONGMARCH_METAL_ENABLED LONGMARCH_HEADLESS
   FMT_HEADER_ONLY NDEBUG "$<$<NOT:$<COMPILE_LANGUAGE:Swift>>:LONGMARCH_ASSETS_DIR=\"\">")
 target_link_libraries(gol_engine PUBLIC "-framework Metal" "-framework Foundation" "-framework QuartzCore")
-# Generate the embedded Slang on the host, without executing a cross-compiled helper.
-set(graphics_generated "${CMAKE_CURRENT_BINARY_DIR}/grassland_graphics")
-file(MAKE_DIRECTORY "${graphics_generated}")
-file(GLOB_RECURSE graphics_shaders CONFIGURE_DEPENDS "${ROOT}/code/grassland/graphics/*.slang")
-add_custom_command(OUTPUT "${graphics_generated}/built_in_shaders.inl"
-  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/embed_shaders.py"
-    "${ROOT}/code/grassland/graphics" "${graphics_generated}/built_in_shaders.inl"
-  DEPENDS ${graphics_shaders} embed_shaders.py VERBATIM)
-target_sources(gol_engine PRIVATE "${graphics_generated}/built_in_shaders.inl")
-set_source_files_properties("${ROOT}/code/grassland/graphics/shader.cpp" PROPERTIES
-  INCLUDE_DIRECTORIES "${graphics_generated}")
 if(GOL_PREPARE)
   longmarch_mobile_compiler(gol_engine)
   # Same exported SPIRV-Cross targets as the desktop Metal backend (LongMarch cmake/Metal.cmake).

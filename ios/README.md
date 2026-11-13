@@ -1,8 +1,8 @@
 # Game of Life for iOS and iPadOS
 
 The SwiftUI app hosts the desktop Game of Life UI from the LongMarch submodule
-(`LongMarch/demo/gol`) in a Metal view, on the LongMarch graphics core and its
-Metal backend. Bundle `net.lazyjazz.gameoflife`, version 1.0.1 (build 2), iOS 18+,
+(`LongMarch/demo/gol`) in a Metal view, on the LongMarch RHI and its
+Metal backend. Bundle `net.lazyjazz.gameoflife`, version 1.0.2 (build 3), iOS 18+,
 iPhone and iPad.
 
 - iPhone locks the interface to the orientation the game opened in; gravity turns
@@ -119,3 +119,8 @@ drive the app without touch input. Results are written to the app's Documents.
 | `LONGMARCH_SMOKE_SIZE_PICKER=width\|height` | Taps a portrait size readout to open its popover |
 | `LONGMARCH_SMOKE_TAPS="x,y;x,y"` | Taps points (fractions of the view) one second apart |
 | `LONGMARCH_SMOKE_PATTERN=<name>` | The open button loads that built-in pattern, such as `Gosper glider gun` |
+
+The iOS shader bundle uses Tier 1 argument buffers so it also runs in the iOS
+simulator. The native Metal command queue presents the RHI image after rendering
+on the same queue. Shader preparation includes preprocessed source, SPIR-V and MSL;
+regenerate `GameResources` whenever the LongMarch shaders or pipeline layouts change.
