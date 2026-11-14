@@ -9,6 +9,7 @@ DesktopGameSession::DesktopGameSession(grassland::rhi::BackendAPI backend) {
   const int extent = size ? std::clamp(std::atoi(size), grid_size::kMin, grid_size::kMax) : 0;
   life_ = std::make_unique<life_demo::GameOfLife>("Game of Life", 1280, 720, extent ? extent : grid_size::kDefault,
                                                   extent ? extent : grid_size::kDefault, backend, true);
+  life_->EnableTiledSimulation();
   if (extent) {
     life_->SetRandomInitialCells(.3f, 42);
     life_->SetInitialPlaying(true);

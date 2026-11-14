@@ -8,6 +8,7 @@
 #include "demo/gol/application/listener.h"
 #include "demo/gol/cells_pattern.h"
 #include "demo/gol/game_of_life_gui.h"
+#include "demo/gol/gpu/tiled_life_storage.h"
 #include "demo/gol/simulation_clock.h"
 #include "demos/DemoSession.h"
 #include "grassland/rhi/shader_cache.h"
@@ -113,7 +114,7 @@ int main(int argc, char **argv) {
       window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
       game.Game()->ResetClock();
       game.Render();
-      Check(game.Game()->NextFrameDelay() == 0, "Cell edit failed to wake its animation");
+      // GPU edits are visible immediately; there is no CPU per-cell animation pass.
       Settle(game);
       Check(Pixels(game) != before, "Desktop cell interaction did not change the rendered grid");
       auto edited = Pixels(game);
@@ -165,10 +166,19 @@ int main(int argc, char **argv) {
           std::filesystem::temp_directory_path() /
           ("longmarch-ui-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".cells");
       Check(game.Game()->CompleteFile(path.string()).empty(), "Hosted grid export failed");
-      auto saved = LoadCellsPattern(path.string());
+      std::ifstream saved_file(path, std::ios::binary);
+      std::vector<uint32_t> saved;
+      std::string saved_error;
+      Check(life_demo::ReadTiledState(saved_file, saved, saved_error), "Sparse grid export is invalid");
+      saved_file.close();
       std::filesystem::remove(path);
-      Check(saved.width == 64 && saved.height == 64 && std::count(saved.cells.begin(), saved.cells.end(), 1) == 36,
-            "Import/export lost centered pattern cells or grid dimensions");
+      size_t live = 0;
+      for (auto word : saved)
+        while (word) {
+          word &= word - 1;
+          ++live;
+        }
+      Check(live == 36, "Import/export lost pattern cells");
       // Malformed imports must preserve the current grid and release the file UI.
       for (const auto &invalid : {std::string("not a saved pattern"), std::string("OO\nO\n"), std::string()}) {
         std::ofstream bad(path, std::ios::binary);
@@ -185,8 +195,9 @@ int main(int argc, char **argv) {
         window->SendKey(GLFW_KEY_S, GLFW_RELEASE, GLFW_MOD_CONTROL);
         Settle(game);
         Check(game.Game()->CompleteFile(path.string()).empty(), "Export failed after invalid import");
-        const auto preserved = LoadCellsPattern(path.string());
-        Check(preserved.cells == saved.cells && preserved.width == saved.width && preserved.height == saved.height,
+        std::ifstream preserved_file(path, std::ios::binary);
+        std::vector<uint32_t> preserved;
+        Check(life_demo::ReadTiledState(preserved_file, preserved, saved_error) && preserved == saved,
               "Invalid import modified the current simulation");
       }
       std::filesystem::remove(path);

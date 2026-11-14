@@ -21,7 +21,7 @@ def stage(source: Path, output: Path):
         raise ValueError('Output exists; remove it or choose a fresh output directory')
     if not (source / 'Patterns' / 'library.json').is_file():
         raise ValueError('No Patterns/library.json in the source')
-    shaders = sorted(p for p in (source / 'shaders').iterdir() if p.name.startswith(('slang-', 'pre-')))
+    shaders = sorted(p for p in (source / 'shaders').iterdir() if p.name.startswith(('slang-', 'pre-', 'threads-slang-')))
     if not shaders:
         raise ValueError('No SPIR-V shaders; prepare the game resources first')
     for shader in shaders:
