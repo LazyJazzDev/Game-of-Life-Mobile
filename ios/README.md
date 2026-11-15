@@ -139,6 +139,7 @@ drive the app without touch input. Results are written to the app's Documents.
 | `LONGMARCH_SMOKE_FILE=open\|save`, `LONGMARCH_SMOKE_FOLDER=<category>` | Opens the pattern library, optionally in a category such as `gun` |
 | `LONGMARCH_SMOKE_SIZE_PICKER=width\|height` | Taps a portrait size readout to open its popover |
 | `LONGMARCH_SMOKE_TAPS="x,y;x,y"` | Taps points (fractions of the view) one second apart |
+| `LONGMARCH_SMOKE_FILE_DELAY=<seconds>` | Delays opening the library so a pattern can be loaded first; defaults to one second |
 | `LONGMARCH_SMOKE_ZOOM=<scale>` | Simulator-only: sends a centered pinch after three seconds for repeatable screenshot framing |
 | `LONGMARCH_SMOKE_PATTERN=<name>` | The open button loads that built-in pattern, such as `Gosper glider gun` |
 

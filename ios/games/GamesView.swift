@@ -765,6 +765,7 @@ private struct DesktopGameView: UIViewRepresentable {
     private var sizeOrientationObserver: NSObjectProtocol?
     private weak var library: UIViewController?
     private var libraryHandled = false
+    private var smokePatternLoaded = false
 
     func requestSize(_ axis: Int, value: Int, bounds: CGRect) {
       guard let view, let root = view.window?.rootViewController,
@@ -829,11 +830,13 @@ private struct DesktopGameView: UIViewRepresentable {
         return
       }
       // LONGMARCH_SMOKE_PATTERN opens a built-in pattern by name instead of the library.
-      if action == 1, let name = ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_PATTERN"],
+      if action == 1, !smokePatternLoaded,
+        let name = ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_PATTERN"],
         let pattern = BuiltinPattern.all.first(where: { $0.name == name })
       {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Builtin.cells")
         if (try? pattern.cells.write(to: url, atomically: true, encoding: .utf8)) != nil {
+          smokePatternLoaded = true
           complete(url)
           return
         }
@@ -941,7 +944,8 @@ private struct DesktopGameView: UIViewRepresentable {
     }
     if let file = ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_FILE"] {
       // Opens the pattern library the way the open/save buttons do, for screenshots.
-      DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak coordinator = context.coordinator] in
+      let delay = Double(ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_FILE_DELAY"] ?? "1") ?? 1
+      DispatchQueue.main.asyncAfter(deadline: .now() + max(1, delay)) { [weak coordinator = context.coordinator] in
         coordinator?.request(file == "save" ? 2 : 1)
       }
     }

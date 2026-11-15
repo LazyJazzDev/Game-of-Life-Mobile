@@ -13,7 +13,7 @@
 
 【内置图案库】
 - 收录 Life Lexicon 中 736 种著名图案，按静物、振荡器、飞船、枪、繁殖器与耙、长寿图案和其他结构分类整理
-- 每个图案标注周期、速度与尺寸，支持按名称搜索
+- 展示图案尺寸及可用的周期、速度信息，支持按名称搜索
 - 滑翔机、Gosper 滑翔机枪、各类飞船，一键载入即可观察
 
 【自由创作】
@@ -58,7 +58,7 @@ The Game of Life is the cellular automaton devised by mathematician John Conway 
 
 BUILT-IN PATTERN LIBRARY
 - 736 famous patterns from the Life Lexicon, organized into still lifes, oscillators, spaceships, guns, puffers and rakes, methuselahs, and other structures
-- Period, speed and size shown for every pattern, with search by name
+- Pattern dimensions and available period and speed information, with search by name
 - Load a glider, the Gosper glider gun or a spaceship with one tap
 
 CREATE YOUR OWN
