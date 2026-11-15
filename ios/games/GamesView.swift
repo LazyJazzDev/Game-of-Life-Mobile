@@ -40,6 +40,14 @@ private final class GameMetalView: MTKView {
     send(2, point)
   }
 
+  #if targetEnvironment(simulator)
+    // Use the real pinch input path to frame repeatable store captures.
+    func smokeZoom(_ scale: Double) {
+      guard scale.isFinite && scale > 0 else { return }
+      send(6, CGPoint(x: bounds.midX, y: bounds.midY), scale)
+    }
+  #endif
+
   override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
     guard event?.allTouches?.count == 1, let touch = touches.first else {
       cancelPointer()
@@ -952,6 +960,15 @@ private struct DesktopGameView: UIViewRepresentable {
         }
       }
     }
+    #if targetEnvironment(simulator)
+      if let value = ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_ZOOM"],
+        let scale = Double(value)
+      {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak view] in
+          view?.smokeZoom(scale)
+        }
+      }
+    #endif
     return canvas
   }
   func updateUIView(_ view: GameCanvasView, context: Context) {
