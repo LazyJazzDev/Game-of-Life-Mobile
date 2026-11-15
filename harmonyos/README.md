@@ -19,6 +19,11 @@ LongMarch RHI's Vulkan backend into an XComponent surface.
 
 ## Foldable layout
 
+The tiled canvas uses a fixed 360 vp reference width for its base cell pitch
+(360 × 0.95 / 64 vp), multiplied by the user's zoom and current display density.
+Folding, unfolding and rotation change the visible range rather than cell size;
+pixel-based pan offsets also follow density changes to preserve the viewed cell.
+
 Native controls use a 40 vp icon size converted to framebuffer pixels by ArkUI's
 current display density. Folding changes available canvas space and toolbar
 placement, not the target control size; unusually small windows shrink controls

@@ -22,6 +22,10 @@ session when the scene migrates between inner and outer displays. Layout follows
 the current viewport aspect ratio; controls stay at 40 points, matching Harmony's
 40 vp policy, with the current screen scale applied to Metal pixels. Resizing or
 switching screens cancels in-flight drawing and two-finger pan gestures.
+The tiled canvas uses a fixed 360-point reference width for its base cell pitch
+(360 × 0.95 / 64 points), multiplied by the user's zoom and current screen scale.
+Unfolding changes the visible range instead of magnifying cells; density changes
+also rescale the pixel-based pan offset to retain the viewed cell.
 Duo supports all four system orientations. UIKit's active occlusion regions
 (including their interaction margins) move only intersecting buttons along their
 rail; a corner camera does not shift the whole toolbar or reduce the board.

@@ -257,6 +257,48 @@ int main(int argc, char **argv) {
       }
       game.Game()->SetControlPixelSize(0);
       game.Resize(640, 800);
+      // The same logical tap relative to the viewport centre must address the
+      // same cell on outer, dual, triple and rotated screens, even if density
+      // changes. Save/readback checks the actual input-to-render layout.
+      std::vector<uint32_t> folded_tap;
+      for (float density : {1.0f, 2.0f, 3.0f}) {
+        game.Game()->SetControlPixelSize(40 * density);
+        for (auto logical : {glm::ivec2{360, 780}, glm::ivec2{660, 780}, glm::ivec2{1000, 780}, glm::ivec2{780, 1000},
+                             glm::ivec2{360, 780}}) {
+          {  // Restore exactly the same world before each tap.
+            std::ofstream original(path, std::ios::binary);
+            Check(life_demo::WriteTiledState(original, saved, saved_error), "Cannot prepare fold test world");
+          }
+          window->SendKey(GLFW_KEY_O, GLFW_PRESS, GLFW_MOD_CONTROL);
+          window->SendKey(GLFW_KEY_O, GLFW_RELEASE, GLFW_MOD_CONTROL);
+          Settle(game);
+          Check(game.Game()->CompleteFile(path.string()).empty(), "Cannot restore fold test world");
+          const auto pixels = glm::ivec2(glm::vec2(logical) * density);
+          game.Resize(pixels.x, pixels.y);
+          game.Render();
+          // The desktop fallback reserves an extra 20 logical pixels at
+          // the top in portrait, shifting the canvas centre down by 10.
+          const float centre_offset = logical.x < logical.y ? 10.0f : 0.0f;
+          window->SendPointer(pixels.x * .5 + 37 * density, pixels.y * .5 + (23 + centre_offset) * density);
+          window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
+          window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
+          game.Render();
+          window->SendKey(GLFW_KEY_S, GLFW_PRESS, GLFW_MOD_CONTROL);
+          window->SendKey(GLFW_KEY_S, GLFW_RELEASE, GLFW_MOD_CONTROL);
+          Settle(game);
+          Check(game.Game()->CompleteFile(path.string()).empty(), "Cannot save fold test tap");
+          std::ifstream tapped_file(path, std::ios::binary);
+          std::vector<uint32_t> tapped;
+          Check(life_demo::ReadTiledState(tapped_file, tapped, saved_error), "Cannot read fold test tap");
+          Check(tapped != saved, "Fold test tap did not edit a cell");
+          if (folded_tap.empty())
+            folded_tap = tapped;
+          Check(tapped == folded_tap, "Folding or density change altered logical cell size");
+        }
+      }
+      game.Game()->SetControlPixelSize(0);
+      game.Resize(640, 800);
+      std::cout << "PASS fold grid: stable cell scale across sizes, rotations and densities\n";
       std::filesystem::remove(path);
       game.Game()->EnableNativeSizeControls();
       Check(game.Game()->SizeControlBounds(1) == glm::vec4(0) && game.Game()->SizeControlBounds(2) == glm::vec4(0),
