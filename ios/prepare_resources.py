@@ -28,7 +28,8 @@ args.output.parent.mkdir(parents=True, exist_ok=True)
 
 
 def run(checker: Path, resources: Path, output: Path, *extra: str) -> subprocess.CompletedProcess:
-    return subprocess.run([str(checker.resolve()), str(resources), str(output), *extra],
+    return subprocess.run([str(checker.resolve()), str(resources), str(output), extra[0] if extra else 'replay',
+                           str(ROOT / 'LongMarch/demo/gol/shaders/tiled_life.slang')],
                           capture_output=True, text=True)
 
 

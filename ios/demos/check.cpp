@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <iostream>
 
 #include "DemoSession.h"
+#include "demo/gol/gpu/tiled_life.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
@@ -16,6 +18,16 @@ int main(int argc, char **argv) {
     std::filesystem::create_directories(argv[2]);
     DemoSession session(argv[1], argc > 3 && std::string(argv[3]) == "prepare");
     session.Render();
+    // Prepare/replay the portable sparse path as well as the detected fast path.
+    // HarmonyOS consumes this same offline bundle on devices without subgroup vote.
+    if (argc > 4) {
+      std::ifstream input(argv[4]);
+      const std::string source{std::istreambuf_iterator<char>(input), {}};
+      life_demo::TiledLife portable;
+      if (source.empty() || !portable.Initialize(session.Device(), source, 64, 64,
+                                                 life_demo::TiledLife::UpdateMethod::BitPlanes, true, false))
+        throw std::runtime_error("Cannot prepare portable tiled shaders");
+    }
     auto extent = session.Image()->GetDesc();
     std::vector<uint8_t> bytes(size_t(extent.width) * extent.height * 4);
     grassland::rhi::ObjPtr<grassland::rhi::ICommandContext> commands = session.Game()->Queue()->CreateCommandContext();

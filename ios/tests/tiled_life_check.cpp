@@ -33,7 +33,7 @@ std::vector<uint8_t> Reference(const std::vector<uint8_t> &cells, uint32_t side,
 }
 
 int main(int argc, char **argv) {
-  if (argc < 2 || argc > 4)
+  if (argc < 2 || argc > 5)
     return 1;
   std::ifstream input(argv[1]);
   const std::string source{std::istreambuf_iterator<char>(input), {}};
@@ -43,9 +43,11 @@ int main(int argc, char **argv) {
     return 2;
   ObjPtr<IQueue> queue = device->GetQueue(QUEUE_TYPE_MAIN);
   life_demo::TiledLife simulation;
-  if (!simulation.Initialize(
-          device.Get(), source, 2, argc >= 3 ? uint32_t(std::stoul(argv[2])) : 256u,
-          argc == 4 ? life_demo::TiledLife::UpdateMethod::Lookup2x2 : life_demo::TiledLife::UpdateMethod::BitPlanes))
+  if (!simulation.Initialize(device.Get(), source, 2, argc >= 3 ? uint32_t(std::stoul(argv[2])) : 256u,
+                             argc >= 4 && std::string(argv[3]) == "lookup"
+                                 ? life_demo::TiledLife::UpdateMethod::Lookup2x2
+                                 : life_demo::TiledLife::UpdateMethod::BitPlanes,
+                             true, argc < 5))
     return 3;
   std::mt19937 random(84911);
   std::vector<uint8_t> cpu(512 * 512);
@@ -123,11 +125,87 @@ int main(int argc, char **argv) {
     return 14;
   if (actual != Pack(Reference(cpu, 512), 512))
     return 15;
-  if (argc == 4) {
+  // A sleeping tile must wake after edits, including edits across edges/corners.
+  // Compare every phase with a dense CPU simulation, not only its final image.
+  auto verify_steps = [&](int count, bool periodic) {
+    ObjPtr<ICommandContext> step_commands = queue->CreateCommandContext();
+    for (int i = 0; i < count; ++i) {
+      if (!simulation.Step(step_commands.Get(), periodic))
+        return false;
+      cpu = Reference(cpu, 512, periodic);
+    }
+    auto readback = ObjPtr<IDownloadToken>(
+        step_commands->CmdDownloadBuffer(simulation.Cells(), 0, simulation.WordCount() * sizeof(uint32_t)));
+    auto submitted = ObjPtr<ISubmissionToken>(step_commands->Submit());
+    return readback && submitted && submitted->WaitHost() &&
+           readback->CopyTo(actual.data(), actual.size() * sizeof(uint32_t)) && actual == Pack(cpu, 512);
+  };
+  auto submit_upload = [&]() {
+    ObjPtr<ICommandContext> upload = queue->CreateCommandContext();
+    if (!simulation.Upload(upload.Get(), Pack(cpu, 512)))
+      return false;
+    ObjPtr<ISubmissionToken> submitted = upload->Submit();
+    return submitted && submitted->WaitHost();
+  };
+  cpu.assign(512 * 512, 0);
+  commands = queue->CreateCommandContext();
+  if (!simulation.Fill(commands.Get(), false))
+    return 23;
+  submission = commands->Submit();
+  if (!submission || !submission->WaitHost() || !verify_steps(4, true))
+    return 24;
+  const uint32_t edge = argc >= 3 ? uint32_t(std::stoul(argv[2])) : 256u;
+  commands = queue->CreateCommandContext();
+  for (uint32_t y : {edge - 1, edge})
+    for (uint32_t x : {edge - 1, edge}) {
+      cpu[y * 512 + x] ^= 1;
+      if (!simulation.Toggle(commands.Get(), x, y))
+        return 25;
+    }
+  submission = commands->Submit();
+  if (!submission || !submission->WaitHost() || !verify_steps(8, true))
+    return 26;
+  commands = queue->CreateCommandContext();
+  cpu[edge * 512 + edge + 1] ^= 1;
+  if (!simulation.Toggle(commands.Get(), edge + 1, edge))
+    return 27;
+  submission = commands->Submit();
+  if (!submission || !submission->WaitHost() || !verify_steps(32, true))
+    return 28;
+  // Editing a distant sleeping tile must preserve an already active oscillator.
+  cpu.assign(512 * 512, 0);
+  for (uint32_t x = 9; x <= 11; ++x)
+    cpu[10 * 512 + x] = 1;
+  if (!submit_upload() || !verify_steps(4, true))
+    return 31;
+  commands = queue->CreateCommandContext();
+  for (uint32_t x : {400u, 401u, 402u}) {
+    cpu[400 * 512 + x] ^= 1;
+    if (!simulation.Toggle(commands.Get(), x, 400))
+      return 32;
+  }
+  submission = commands->Submit();
+  if (!submission || !submission->WaitHost() || !verify_steps(12, true))
+    return 33;
+  // Boundary mode changes can wake a stable configuration without a cell edit.
+  cpu.assign(512 * 512, 0);
+  for (uint32_t y : {0u, 511u})
+    for (uint32_t x : {0u, 511u})
+      cpu[y * 512 + x] = 1;
+  if (!submit_upload() || !verify_steps(4, true) || !verify_steps(4, false))
+    return 29;
+  cpu.assign(512 * 512, 0);
+  for (uint32_t y : {10u, 11u})
+    for (uint32_t x : {0u, 1u, 510u, 511u})
+      cpu[y * 512 + x] = 1;
+  if (!submit_upload() || !verify_steps(4, false) || !verify_steps(12, true))
+    return 30;
+  std::cout << "PASS dormant tiles, cross-corner edits, uploads, clear and boundary-mode wakeups\n";
+  if (argc >= 4 && std::string(argv[3]) == "lookup") {
     // Shift each 4x4 input by one so the central output is even-aligned.
     life_demo::TiledLife exhaustive;
     if (!exhaustive.Initialize(device.Get(), source, 4, uint32_t(std::stoul(argv[2])),
-                               life_demo::TiledLife::UpdateMethod::Lookup2x2))
+                               life_demo::TiledLife::UpdateMethod::Lookup2x2, true, argc < 5))
       return 19;
     std::vector<uint8_t> all(1024 * 1024);
     for (uint32_t pattern = 0; pattern < 65536; ++pattern) {
