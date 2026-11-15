@@ -3,6 +3,7 @@ import { window } from '@kit.ArkUI';
 import native from 'libgameoflife.so';
 
 export default class EntryAbility extends UIAbility {
+  private captureLanguage: string = '';
   onCreate(want: Want): void {
     // Explicit capture arguments only; ordinary launches never seed a board.
     const pattern = want.parameters?.['capturePattern'];
@@ -13,7 +14,7 @@ export default class EntryAbility extends UIAbility {
     AppStorage.setOrCreate('capturePanel', typeof panel === 'string' ? panel : '');
     const language = want.parameters?.['captureLanguage'];
     if (typeof language === 'string' && (language === 'en-US' || language === 'zh-CN')) {
-      this.context.getApplicationContext().setLanguage(language);
+      this.captureLanguage = language;
     }
     this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
   }
@@ -28,6 +29,10 @@ export default class EntryAbility extends UIAbility {
       // The system handles rotation and its lock; the app reads no motion sensor.
       await win.setPreferredOrientation(window.Orientation.AUTO_ROTATION_RESTRICTED);
       await stage.loadContent('pages/Index');
+      // setLanguage requires an existing window and a loaded page (API 11+).
+      if (this.captureLanguage.length > 0) {
+        this.context.getApplicationContext().setLanguage(this.captureLanguage);
+      }
     } catch (e) {
       AppStorage.setOrCreate('gameStartupError', `Window setup: ${e}`);
     }
