@@ -193,6 +193,20 @@ int main(int argc, char **argv) {
       std::string saved_error;
       Check(life_demo::ReadTiledState(saved_file, saved, saved_error), "Sparse grid export is invalid");
       saved_file.close();
+      window->SendKey(GLFW_KEY_O, GLFW_PRESS, GLFW_MOD_CONTROL);
+      window->SendKey(GLFW_KEY_O, GLFW_RELEASE, GLFW_MOD_CONTROL);
+      Settle(game);
+      Check(game.Game()->CompleteFile(path.string()).empty(), "V2 binary save was not recognized by the file UI");
+      Settle(game);
+      window->SendKey(GLFW_KEY_S, GLFW_PRESS, GLFW_MOD_CONTROL);
+      window->SendKey(GLFW_KEY_S, GLFW_RELEASE, GLFW_MOD_CONTROL);
+      Settle(game);
+      Check(game.Game()->CompleteFile(path.string()).empty(), "Could not resave loaded V2 grid");
+      std::ifstream reloaded_file(path, std::ios::binary);
+      std::vector<uint32_t> reloaded;
+      Check(life_demo::ReadTiledState(reloaded_file, reloaded, saved_error) && reloaded == saved,
+            "V2 UI save/load roundtrip changed the grid");
+      reloaded_file.close();
       std::filesystem::remove(path);
       size_t live = 0;
       for (auto word : saved)
