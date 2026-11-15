@@ -73,6 +73,23 @@ int main(int argc, char **argv) {
       return 7;
     }
   }
+  // Cover every possible nine-cell neighborhood independently, including
+  // all carry combinations in the bit-plane vertical sum.
+  cpu.assign(512 * 512, 0);
+  for (uint32_t pattern = 0; pattern < 512; ++pattern) {
+    uint32_t x = (pattern % 32) * 4, y = (pattern / 32) * 4;
+    for (uint32_t bit = 0; bit < 9; ++bit)
+      cpu[(y + bit / 3) * 512 + x + bit % 3] = (pattern >> bit) & 1;
+  }
+  commands = queue->CreateCommandContext();
+  if (!simulation.Upload(commands.Get(), Pack(cpu, 512)) || !simulation.Step(commands.Get()))
+    return 16;
+  download = commands->CmdDownloadBuffer(simulation.Cells(), 0, actual.size() * 4);
+  submission = commands->Submit();
+  if (!submission || !submission->WaitHost() || !download || !download->CopyTo(actual.data(), actual.size() * 4))
+    return 17;
+  if (actual != Pack(Reference(cpu, 512), 512))
+    return 18;
   // Eight live neighbors must die without carrying into the next packed cell.
   // Fixed boundaries additionally leave exactly the four live corner cells.
   for (bool periodic : {false, true}) {
@@ -105,5 +122,5 @@ int main(int argc, char **argv) {
   if (actual != Pack(Reference(cpu, 512), 512))
     return 15;
   std::cout
-      << "PASS 512x512, 12 random generations, four-bit cache, count-eight overflow, fixed/wrapped edges and cross-tile edits\n";
+      << "PASS 512x512, 12 random generations, bit-plane cache, all 512 neighborhoods, count-eight overflow, fixed/wrapped edges and cross-tile edits\n";
 }
