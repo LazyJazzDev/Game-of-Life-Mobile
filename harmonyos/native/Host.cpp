@@ -256,6 +256,7 @@ void Host::Execute(const std::string &json) {
 
 void Host::Frame() {
   auto start = std::chrono::steady_clock::now();
+  const bool scheduled = !dirty_ && delay_ >= 0;
   if (!surface_)
     surface_ = Surface::Create(game_->Device(), window_, error_);
   if (!surface_)
@@ -292,8 +293,14 @@ void Host::Frame() {
   // A replaced swapchain needs another presentation even when the game is idle.
   if (!presented)
     delay_ = 1.0 / 60;
-  deadline_ = start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                          std::chrono::duration<double>(std::max(1.0 / 60, delay_)));
+  const auto period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+      std::chrono::duration<double>(std::max(1.0 / 60, delay_)));
+  // Keep scheduled frames on an absolute cadence: wait_until may wake late,
+  // and restarting the clock at each wake accumulates that delay every frame.
+  // Input-driven frames and long stalls start a fresh cadence, without bursts.
+  deadline_ = (scheduled ? deadline_ : start) + period;
+  if (deadline_ <= start)
+    deadline_ = start + period;
 }
 
 void Host::Publish() {
