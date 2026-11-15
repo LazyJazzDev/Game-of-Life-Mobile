@@ -467,7 +467,10 @@ struct Index {
   // Pattern import, camera pinch and sheets use the same paths as user actions.
   private async prepareCapture(): Promise<void> {
     try {
-      const name = AppStorage.get<string>('capturePattern') ?? '';
+      const requestedName = AppStorage.get<string>('capturePattern') ?? '';
+      // Cloud shell inputs can reject quoted names; keep explicit space-free aliases.
+      const name = requestedName === 'pi-orbital' ? 'pi orbital' :
+        requestedName === 'koks-galaxy' ? "Kok's galaxy" : requestedName;
       const pattern = this.loadBuiltins().find((item: BuiltinPattern) => item.name === name);
       if (!pattern) throw new FileOperationError('invalid_pattern_file');
       const path = `${this.context().cacheDir}/Capture.cells`;

@@ -235,6 +235,8 @@ is unchanged. `capturePattern` is an exact built-in pattern name; `captureZoom`
 is a positive pinch multiplier (maximum 10); optional `capturePanel` is `library`
 or `save`. `captureLanguage` accepts `zh-CN` or `en-US` and sets the app language.
 The imported board stays paused. Stop the app before each new capture launch.
+For cloud shells that reject quoted names, `pi-orbital` and `koks-galaxy` are
+aliases for `pi orbital` and `Kok's galaxy`; they load the same built-in patterns.
 
 In the Huawei cloud device's **Control parameters → Shell script** panel:
 
