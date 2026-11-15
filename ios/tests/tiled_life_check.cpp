@@ -33,7 +33,7 @@ std::vector<uint8_t> Reference(const std::vector<uint8_t> &cells, uint32_t side,
 }
 
 int main(int argc, char **argv) {
-  if (argc != 2 && argc != 3)
+  if (argc < 2 || argc > 4)
     return 1;
   std::ifstream input(argv[1]);
   const std::string source{std::istreambuf_iterator<char>(input), {}};
@@ -43,7 +43,9 @@ int main(int argc, char **argv) {
     return 2;
   ObjPtr<IQueue> queue = device->GetQueue(QUEUE_TYPE_MAIN);
   life_demo::TiledLife simulation;
-  if (!simulation.Initialize(device.Get(), source, 2, argc == 3 ? uint32_t(std::stoul(argv[2])) : 256u))
+  if (!simulation.Initialize(
+          device.Get(), source, 2, argc >= 3 ? uint32_t(std::stoul(argv[2])) : 256u,
+          argc == 4 ? life_demo::TiledLife::UpdateMethod::Lookup2x2 : life_demo::TiledLife::UpdateMethod::BitPlanes))
     return 3;
   std::mt19937 random(84911);
   std::vector<uint8_t> cpu(512 * 512);
@@ -121,6 +123,30 @@ int main(int argc, char **argv) {
     return 14;
   if (actual != Pack(Reference(cpu, 512), 512))
     return 15;
+  if (argc == 4) {
+    // Shift each 4x4 input by one so the central output is even-aligned.
+    life_demo::TiledLife exhaustive;
+    if (!exhaustive.Initialize(device.Get(), source, 4, uint32_t(std::stoul(argv[2])),
+                               life_demo::TiledLife::UpdateMethod::Lookup2x2))
+      return 19;
+    std::vector<uint8_t> all(1024 * 1024);
+    for (uint32_t pattern = 0; pattern < 65536; ++pattern) {
+      uint32_t x = (pattern % 256) * 4 + 1, y = (pattern / 256) * 4 + 1;
+      for (uint32_t bit = 0; bit < 16; ++bit)
+        all[((y + bit / 4) % 1024) * 1024 + (x + bit % 4) % 1024] = (pattern >> bit) & 1;
+    }
+    commands = queue->CreateCommandContext();
+    if (!exhaustive.Upload(commands.Get(), Pack(all, 1024)) || !exhaustive.Step(commands.Get()))
+      return 20;
+    std::vector<uint32_t> full(exhaustive.WordCount());
+    download = commands->CmdDownloadBuffer(exhaustive.Cells(), 0, full.size() * 4);
+    submission = commands->Submit();
+    if (!submission || !submission->WaitHost() || !download || !download->CopyTo(full.data(), full.size() * 4))
+      return 21;
+    if (full != Pack(Reference(all, 1024), 1024))
+      return 22;
+    std::cout << "PASS all 65536 lookup inputs, including wrapped 4x4 windows\n";
+  }
   std::cout
-      << "PASS 512x512, 12 random generations, bit-plane cache, all 512 neighborhoods, count-eight overflow, fixed/wrapped edges and cross-tile edits\n";
+      << "PASS 512x512, 12 random generations, tile update, all 512 neighborhoods, count-eight overflow, fixed/wrapped edges and cross-tile edits\n";
 }
