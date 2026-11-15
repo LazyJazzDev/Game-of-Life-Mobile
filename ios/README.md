@@ -2,10 +2,10 @@
 
 The SwiftUI app hosts the desktop Game of Life UI from the LongMarch submodule
 (`LongMarch/demo/gol`) in a Metal view, on the LongMarch RHI and its
-Metal backend. Bundle `net.lazyjazz.gameoflife`, version 1.0.2 (build 3), iOS 18+,
+Metal backend. Bundle `net.lazyjazz.gameoflife`, version 1.0.2 (build 4), iOS 18+,
 iPhone and iPad.
 
-- iPhone locks the interface to the orientation the game opened in; gravity turns
+- Conventional iPhone locks the interface to the orientation the game opened in; gravity turns
   only the button icons. iPad rotates freely and the controls follow the window's
   short edges.
 - Notch and Dynamic Island safe areas, the home-indicator strip and an iPad size
@@ -15,6 +15,19 @@ iPhone and iPad.
   built-in Life Lexicon patterns, the user's saved patterns, and the system files.
 - Frames are rendered only on demand: while the game is paused and idle, nothing is
   scheduled.
+
+Foldable iPhones (including Duo) use UIKit's `UIHingeInteraction` capability
+on iOS 27.1 and later, follow system orientation, and retain the same game
+session when the scene migrates between inner and outer displays. Layout follows
+the current viewport aspect ratio; controls stay at 40 points, matching Harmony's
+40 vp policy, with the current screen scale applied to Metal pixels. Resizing or
+switching screens cancels in-flight drawing and two-finger pan gestures.
+
+For simulator regression, launch with `LONGMARCH_SMOKE_LAYOUT=1`, rotate and
+switch displays, then inspect `Documents/LayoutSmoke.json` for viewport, density
+and renderer continuity. `LONGMARCH_SMOKE_ORIENTATION=right` tests programmatic
+rotation separately; some Duo windowing modes reject programmatic orientation
+requests even though system-driven rotation works.
 
 ## Layout
 

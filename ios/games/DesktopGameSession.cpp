@@ -78,6 +78,10 @@ void DesktopGameSession::SetCutoutInsets(float left, float top, float right) {
   life_->SetCutoutInsets(left, top, right);
 }
 
+void DesktopGameSession::SetControlPixelSize(float pixels) {
+  life_->SetControlPixelSize(pixels);
+}
+
 void DesktopGameSession::SetControlExtentLimit(float height_fraction) {
   life_->SetControlExtentLimit(height_fraction);
 }

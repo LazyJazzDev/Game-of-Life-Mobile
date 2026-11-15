@@ -236,6 +236,27 @@ int main(int argc, char **argv) {
         Check(life_demo::ReadTiledState(preserved_file, preserved, saved_error) && preserved == saved,
               "Invalid import modified the current simulation");
       }
+      // The same live session must survive Duo's separate inner/outer surfaces.
+      game.Game()->SetControlPixelSize(120);
+      for (auto size :
+           {glm::ivec2{1398, 2034}, glm::ivec2{2853, 2007}, glm::ivec2{2007, 2853}, glm::ivec2{1398, 2034}}) {
+        window->SendMouseButton(GLFW_MOUSE_BUTTON_RIGHT, GLFW_PRESS);
+        window->SendFocus(false);
+        Check(!window->IsMouseButtonDown(GLFW_MOUSE_BUTTON_RIGHT), "Fold left two-finger pan pressed");
+        window->SendFocus(true);
+        game.Resize(size.x, size.y);
+        game.Render();
+        window->SendKey(GLFW_KEY_S, GLFW_PRESS, GLFW_MOD_CONTROL);
+        window->SendKey(GLFW_KEY_S, GLFW_RELEASE, GLFW_MOD_CONTROL);
+        Settle(game);
+        Check(game.Game()->CompleteFile(path.string()).empty(), "Export failed after folding");
+        std::ifstream folded_file(path, std::ios::binary);
+        std::vector<uint32_t> folded;
+        Check(life_demo::ReadTiledState(folded_file, folded, saved_error) && folded == saved,
+              "Folding or rotation changed the simulation cells");
+      }
+      game.Game()->SetControlPixelSize(0);
+      game.Resize(640, 800);
       std::filesystem::remove(path);
       game.Game()->EnableNativeSizeControls();
       Check(game.Game()->SizeControlBounds(1) == glm::vec4(0) && game.Game()->SizeControlBounds(2) == glm::vec4(0),
@@ -301,7 +322,9 @@ int main(int argc, char **argv) {
       life.EnableNativeSizeControls();
       for (float density : {1.0f, 2.0f, 3.0f}) {
         life.SetControlPixelSize(40.0f * density);
-        for (auto size : {glm::ivec2{360, 780}, glm::ivec2{660, 780}, glm::ivec2{1000, 780}, glm::ivec2{780, 1000}}) {
+        for (auto size : {glm::ivec2{360, 780}, glm::ivec2{660, 780}, glm::ivec2{1000, 780}, glm::ivec2{780, 1000},
+                          glm::ivec2{466, 678}, glm::ivec2{678, 466}, glm::ivec2{669, 951}, glm::ivec2{951, 669},
+                          glm::ivec2{466, 678}}) {
           auto pixels = glm::ivec2(glm::vec2(size) * density);
           life.HostedInput()->UpdateHostedSize(pixels, pixels);
           life.RenderHostedFrame();

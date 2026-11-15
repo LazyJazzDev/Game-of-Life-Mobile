@@ -66,6 +66,19 @@ private final class GameMetalView: MTKView {
       pointerDown = false
     }
   }
+  func cancelForResize() {
+    // Focus loss clears both mouse buttons in the shared game input layer.
+    // Cancelling only pointerDown leaves a two-finger pan held across a fold.
+    for gesture in gestureRecognizers ?? [] {
+      gesture.isEnabled = false
+      gesture.isEnabled = true
+    }
+    renderer.input(5, x: 0, y: 0, value: 0)
+    renderer.input(5, x: 0, y: 0, value: 1)
+    pointerDown = false
+    panPoint = .zero
+  }
+
   @objc private func magnify(_ gesture: UIPinchGestureRecognizer) {
     cancelPointer()
     // Ending touches report the remaining finger, not the midpoint; moving the
@@ -90,8 +103,8 @@ private final class GameMetalView: MTKView {
   }
 }
 
-// The window stays in its entry orientation. Only the icon angle follows the
-// device: there is no counter-rotated rectangular view or relayout to animate.
+// Conventional phones keep their entry orientation; Duo and iPad follow the
+// system window orientation, with layout derived from the current bounds.
 private final class GameCanvasView: UIView {
   let metal = GameMetalView(frame: .zero, device: nil)
   private weak var lockedScene: UIWindowScene?
@@ -100,6 +113,10 @@ private final class GameCanvasView: UIView {
   private var bottomControlInset: CGFloat?
   private var cutoutInsets: [CGFloat]?
   private var controlExtentLimit: CGFloat?
+  private var controlPixelSize: CGFloat?
+  private var hasHinge = false
+  private weak var layoutScreen: UIScreen?
+  private var layoutSmokeRows: [[String: Any]] = []
   // The short edge, in points, beyond which controls stop growing (iPad).
   private static let maxControlExtent: CGFloat = 560
 
@@ -107,11 +124,36 @@ private final class GameCanvasView: UIView {
     super.init(frame: frame)
     isMultipleTouchEnabled = true
     addSubview(metal)
+    if #available(iOS 27.1, *) {
+      addInteraction(UIHingeInteraction { [weak self] _, update in
+        guard let self, update.hinge != nil else { return }
+        // Capability detection, not a device-name or screen-size heuristic.
+        // Keep this policy through the temporary nil update during migration.
+        if !self.hasHinge {
+          self.hasHinge = true
+          self.stopOrientationTracking()
+          self.metal.renderer.setGameIconRotation(0)
+        }
+        self.setNeedsLayout()
+      })
+    }
+    registerForTraitChanges([UITraitDisplayScale.self]) { (self: GameCanvasView, _: UITraitCollection) in
+      self.setNeedsLayout()
+    }
   }
   required init?(coder: NSCoder) { fatalError() }
 
   override func layoutSubviews() {
     super.layoutSubviews()
+    let screen = window?.screen
+    let surfaceChanged = metal.bounds.size != bounds.size || layoutScreen !== screen
+    if surfaceChanged {
+      metal.cancelForResize()
+      layoutScreen = screen
+    }
+    if let screen, metal.contentScaleFactor != screen.scale {
+      metal.contentScaleFactor = screen.scale
+    }
     metal.frame = bounds
     if let window, bounds.height > 0 {
       // Read the window inset: this view deliberately ignores SwiftUI safe
@@ -136,10 +178,31 @@ private final class GameCanvasView: UIView {
         cutoutInsets = insets
         metal.renderer.setGameCutoutInsetsLeft(Float(insets[0]), top: Float(insets[1]), right: Float(insets[2]))
       }
+      if hasHinge {
+        // Match Harmony's 40 vp controls: UIKit points track display density,
+        // unlike a fraction of the changing folded/unfolded screen width.
+        let pixels = 40 * window.screen.scale
+        if controlPixelSize != pixels {
+          controlPixelSize = pixels
+          metal.renderer.setGameControlPixelSize(Float(pixels))
+        }
+      }
       let limit = Self.maxControlExtent / bounds.height
       if controlExtentLimit != limit {
         controlExtentLimit = limit
         metal.renderer.setGameControlExtentLimit(Float(limit))
+      }
+      if surfaceChanged, ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_LAYOUT"] != nil {
+        layoutSmokeRows.append([
+          "width_points": bounds.width, "height_points": bounds.height,
+          "scale": window.screen.scale, "foldable": hasHinge,
+          "control_pixels": controlPixelSize ?? 0,
+          "renderer": String(describing: ObjectIdentifier(metal.renderer)),
+          "screen": String(describing: ObjectIdentifier(window.screen)),
+        ])
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+          .appendingPathComponent("LayoutSmoke.json")
+        try? JSONSerialization.data(withJSONObject: layoutSmokeRows).write(to: url)
       }
     }
   }
@@ -151,9 +214,17 @@ private final class GameCanvasView: UIView {
 
   override func didMoveToWindow() {
     super.didMoveToWindow()
+    setNeedsLayout()
+    if hasHinge, window != nil,
+      ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_ORIENTATION"] != nil
+    {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+        self?.checkOrientationLock()
+      }
+    }
     if window == nil {
       stopOrientationTracking()
-    } else if lockedScene == nil, traitCollection.userInterfaceIdiom == .phone,
+    } else if lockedScene == nil, !hasHinge, traitCollection.userInterfaceIdiom == .phone,
       let scene = window?.windowScene
     {
       entryOrientation = scene.interfaceOrientation
@@ -234,17 +305,21 @@ private final class GameCanvasView: UIView {
     metal.renderer.setGameIconRotation(Float(radians))
   }
 
-  // Verify the actual UIWindowScene refuses rotation, not just that the final
-  // framebuffer looks upright after a system rotation animation.
+  // Exercise the actual UIWindowScene rotation policy. Conventional phones
+  // reject this request; foldable phones accept it and relayout the canvas.
   private func checkOrientationLock() {
-    guard let scene = lockedScene else { return }
+    guard let scene = window?.windowScene else { return }
     let before = scene.interfaceOrientation
     let beforeBounds = bounds
     let requested: UIInterfaceOrientationMask = before == .portrait ? .landscapeRight : .portrait
     var rejected = false
-    scene.requestGeometryUpdate(.iOS(interfaceOrientations: requested)) { _ in rejected = true }
+    var rejection = ""
+    scene.requestGeometryUpdate(.iOS(interfaceOrientations: requested)) { error in
+      rejected = true
+      rejection = error.localizedDescription
+    }
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-      guard let self, self.lockedScene === scene else { return }
+      guard let self, self.window?.windowScene === scene else { return }
       var gestureController = self.window?.rootViewController
       while let child = gestureController?.childForScreenEdgesDeferringSystemGestures {
         gestureController = child
@@ -253,6 +328,10 @@ private final class GameCanvasView: UIView {
         "defers_bottom_gestures": gestureController?.preferredScreenEdgesDeferringSystemGestures
           .contains(.bottom) ?? false,
         "rotation_rejected": rejected,
+        "rotation_error": rejection,
+        "foldable_policy": self.hasHinge,
+        "control_pixel_size": self.controlPixelSize ?? 0,
+        "screen_scale": self.window?.screen.scale ?? 0,
         "interface_unchanged": scene.interfaceOrientation == before,
         "bounds_unchanged": self.bounds == beforeBounds,
         "view_transform_identity": self.metal.transform.isIdentity,
@@ -333,9 +412,9 @@ private struct PatternFile: Identifiable {
   var name: String { url.deletingPathExtension().lastPathComponent }
 }
 
-// On iPhone, the game freezes the interface orientation for the lifetime of its page.
+// On conventional iPhone, the game freezes the interface orientation for the lifetime of its page.
 // Device orientation remains available to its icons without rotating the UIWindow.
-// iPad rotates freely: the App Store requires all four orientations from apps
+// Foldable phones follow system rotation. iPad rotates freely: the App Store requires all four orientations from apps
 // that support multitasking, and its layout follows the window's short edges.
 @MainActor
 final class GameAppDelegate: NSObject, UIApplicationDelegate {

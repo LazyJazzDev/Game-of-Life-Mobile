@@ -24,6 +24,7 @@ typedef void (^DemoProgress)(double frameSeconds,
 - (void)setGameIconRotation:(float)radians;
 - (void)setGameBottomControlInset:(float)heightFraction;
 - (void)setGameCutoutInsetsLeft:(float)left top:(float)top right:(float)right;
+- (void)setGameControlPixelSize:(float)pixels;
 - (void)setGameControlExtentLimit:(float)heightFraction;
 - (void)setActive:(BOOL)active;
 - (void)stop;

@@ -21,6 +21,7 @@ class DesktopGameSession {
   void SetIconOrientation(float radians);
   void SetBottomControlInset(float height_fraction);
   void SetCutoutInsets(float left, float top, float right);
+  void SetControlPixelSize(float pixels);
   void SetControlExtentLimit(float height_fraction);
   void EnableNativeSizeControls();
   glm::ivec2 TakeSizeControlRequest();

@@ -165,6 +165,15 @@
   });
 }
 
+- (void)setGameControlPixelSize:(float)pixels {
+  const uint64_t generation = _generation;
+  [self wakeGame];
+  dispatch_async(LongMarchRenderQueue(), ^{
+    if (self->_generation == generation && self->_session && self->_session->Game())
+      self->_session->Game()->SetControlPixelSize(pixels);
+  });
+}
+
 - (void)setGameIconRotation:(float)radians {
   const uint64_t generation = _generation;
   [self wakeGame];
