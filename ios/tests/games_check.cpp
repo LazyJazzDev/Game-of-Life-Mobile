@@ -80,6 +80,25 @@ int main(int argc, char **argv) {
     Check(zoom_limits.zoom == 64.0f / 16384, "Zoom does not reach the whole fixed world");
     zoom_limits.Zoom(1.0e6f, glm::vec2{0}, 64.0f / 16384);
     Check(zoom_limits.zoom == 12.0f, "Maximum magnification changed");
+    for (int level = 0; level < 3; ++level) {
+      const float unit = 1000.0f / life_demo::GridDetail::kSpans[level];
+      auto begin = life_demo::GridDetail::At(unit * 0.5f, 1000);
+      auto middle = life_demo::GridDetail::At(unit * 0.75f, 1000);
+      auto end = life_demo::GridDetail::At(unit, 1000);
+      Check(begin.major == level && begin.transition == 0, "Checker transition began before half-screen span");
+      Check(middle.major == level && std::abs(middle.transition - 0.5f) < 1e-6f,
+            "Checker transition is not linear in projected span");
+      Check(end.major == level + 1 && end.transition == 0, "Parent checker remains at one-screen span");
+    }
+    Check(!life_demo::GridDetail::Heat(0.25f) && life_demo::GridDetail::Heat(0.249f),
+          "Heat threshold is not strictly over 16 cells per pixel");
+    life_demo::GridRulerTiming ruler;
+    ruler.Zoom(10);
+    Check(ruler.Opacity(10) == 0 && ruler.Opacity(10.15) > 0.999f, "Ruler did not fade in");
+    ruler.Zoom(11);
+    Check(ruler.Opacity(13) > 0.999f && ruler.Opacity(13.175) > 0.49f && ruler.Opacity(13.175) < 0.51f &&
+              ruler.Opacity(13.35) == 0,
+          "Ruler did not hold two seconds after the last zoom and fade out");
     SimulationClock clock;
     int steps = 0;
     clock.Advance(.2, true, 0, [&] { ++steps; });
@@ -231,15 +250,16 @@ int main(int argc, char **argv) {
         return true;
       };
       auto centre = (400 * 640 + 320) * 4;
-      Check(std::abs(int(overview[centre]) - 47) <= 2, "Minified empty grid did not use average cell color");
+      Check((overview[centre] <= 2 || std::abs(int(overview[centre]) - 38) <= 2),
+            "Empty heat view did not use a checker interval");
       window->MagnifyEvent().InvokeCallbacks(
           grassland::rhi::MagnifyGesture{0.5, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
       Settle(game);
       Check(same_grid(Pixels(game), overview), "Overview zoom went below the full-world fit limit");
       tap(576, 96);
       auto random_overview = Pixels(game);
-      Check(random_overview[centre] > 72 && random_overview[centre] < 102,
-            "Random overview did not average live/dead coverage through mipmaps");
+      Check(std::abs(int(random_overview[centre]) - int(overview[centre])) <= 2,
+            "Random fill incorrectly appeared as simulated change heat");
       window->MagnifyEvent().InvokeCallbacks(
           grassland::rhi::MagnifyGesture{1.0e6, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
       Settle(game);
