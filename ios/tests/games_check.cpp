@@ -250,8 +250,9 @@ int main(int argc, char **argv) {
         return true;
       };
       auto centre = (400 * 640 + 320) * 4;
-      Check((overview[centre] <= 2 || std::abs(int(overview[centre]) - 38) <= 2),
-            "Empty heat view did not use a checker interval");
+      Check(
+          (overview[centre] <= 2 || std::abs(int(overview[centre]) - int(255 * life_demo::GridDetail::kContrast)) <= 2),
+          "Empty heat view did not use a checker interval");
       window->MagnifyEvent().InvokeCallbacks(
           grassland::rhi::MagnifyGesture{0.5, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
       Settle(game);
