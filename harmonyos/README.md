@@ -226,3 +226,22 @@ Stage a newly prepared shader bundle with `prepare_resources.py`; preprocessed
 source and SPIR-V entries are required. The Vulkan backend requires Vulkan 1.2
 and timeline semaphores, and uses its render-pass fallback where dynamic rendering
 is unavailable. The byte-address shader loads retain the Mate 60 driver workaround.
+
+## Deterministic store capture (cloud devices)
+
+An explicit Ability Want can prepare the actual app for screenshots after normal
+privacy consent and the first rendered frame. Without these arguments, startup
+is unchanged. `capturePattern` is an exact built-in pattern name; `captureZoom`
+is a positive pinch multiplier (maximum 10); optional `capturePanel` is `library`
+or `save`. `captureLanguage` accepts `zh-CN` or `en-US` and sets the app language.
+The imported board stays paused. Stop the app before each new capture launch.
+
+In the Huawei cloud device's **Control parameters → Shell script** panel:
+
+```sh
+aa force-stop net.lazyjazz.gameoflife
+aa start -b net.lazyjazz.gameoflife -a EntryAbility --ps capturePattern pulsar --ps captureZoom 3 --ps capturePanel library --ps captureLanguage zh-CN
+```
+
+Capture through the cloud screenshot panel after the real UI settles. Use the
+same pattern and zoom parameters on iOS; do not substitute other device frames.

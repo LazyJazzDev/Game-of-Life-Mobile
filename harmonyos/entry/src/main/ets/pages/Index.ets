@@ -162,6 +162,8 @@ struct Index {
   private libraryRows: LibraryRows = new LibraryRows();
   private builtins?: BuiltinPattern[];
   private request: number = 0;
+  private captureStarted: boolean = false;
+  private captureWaiting: boolean = false;
   private areaWidth: number = 1;
   private areaHeight: number = 1;
   private lastX: number = 0;
@@ -286,7 +288,21 @@ struct Index {
         this.sizeValue = value.sizeValue;
         this.sizeVisible = value.sizeAxis > 0;
       }
-      if (this.opened && value.fileRequest > 0 && !this.fileBusy) this.fileAction(value.fileRequest);
+      if (this.opened && value.frames > 0 && !this.captureStarted) {
+        this.captureStarted = true;
+        const pattern = AppStorage.get<string>('capturePattern') ?? '';
+        if (pattern.length > 0) {
+          this.captureWaiting = true;
+          this.fileBusy = true;
+          this.send({ type: 'requestFile', value: 1 });
+        }
+      }
+      if (this.captureWaiting && value.fileRequest === 1) {
+        this.captureWaiting = false;
+        this.prepareCapture();
+      } else if (this.opened && value.fileRequest > 0 && !this.fileBusy) {
+        this.fileAction(value.fileRequest);
+      }
       this.showNativeError(value.error);
     }, 250);
   }
@@ -447,6 +463,31 @@ struct Index {
     }
     throw new FileOperationError('file_operation_failed');
   }
+  // Invoked only after normal privacy consent, resource extraction and first frame.
+  // Pattern import, camera pinch and sheets use the same paths as user actions.
+  private async prepareCapture(): Promise<void> {
+    try {
+      const name = AppStorage.get<string>('capturePattern') ?? '';
+      const pattern = this.loadBuiltins().find((item: BuiltinPattern) => item.name === name);
+      if (!pattern) throw new FileOperationError('invalid_pattern_file');
+      const path = `${this.context().cacheDir}/Capture.cells`;
+      const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+      try { fs.writeSync(file.fd, patternCells(pattern)); } finally { fs.closeSync(file); }
+      await this.completeFile(path);
+      const zoom = Number(AppStorage.get<string>('captureZoom') ?? '1');
+      if (Number.isFinite(zoom) && zoom > 0) {
+        this.send({ type: 'input', kind: 6, x: 0.5, y: 0.5, value: Math.min(10, zoom) });
+      }
+      const panel = AppStorage.get<string>('capturePanel') ?? '';
+      if (panel === 'library' || panel === 'save') {
+        this.send({ type: 'requestFile', value: panel === 'save' ? 2 : 1 });
+      }
+    } catch (e) {
+      try { await this.completeFile(''); } catch (cancelError) { /* Report the capture setup error below. */ }
+      this.alert(this.text('game_error'), this.text('invalid_pattern_file'));
+    } finally { this.fileBusy = false; }
+  }
+
   private patternDirectory(): string {
     const directory = `${this.context().filesDir}/patterns`;
     if (!fs.accessSync(directory)) fs.mkdirSync(directory);

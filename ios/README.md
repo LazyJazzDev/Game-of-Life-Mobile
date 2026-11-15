@@ -147,3 +147,14 @@ The iOS shader bundle uses Tier 1 argument buffers so it also runs in the iOS
 simulator. The native Metal command queue presents the RHI image after rendering
 on the same queue. Shader preparation includes preprocessed source, SPIR-V and MSL;
 regenerate `GameResources` whenever the LongMarch shaders or pipeline layouts change.
+
+### Deterministic store capture
+
+Set `LONGMARCH_CAPTURE_PATTERN` to an exact built-in library name (for example
+`pulsar`), `LONGMARCH_CAPTURE_ZOOM` to a positive pinch multiplier (up to 10),
+and optionally `LONGMARCH_CAPTURE_PANEL=library` or `save`. The host waits for
+its first rendered frame, imports through the normal file workflow, then adjusts
+the camera and opens the requested panel. The board stays paused. No coordinate
+taps or fixed startup delays are required. With simctl, prefix these environment
+variables with `SIMCTL_CHILD_`; select the locale with `-AppleLanguages`.
+Do not combine these parameters with the older timed `LONGMARCH_SMOKE_*` hooks.

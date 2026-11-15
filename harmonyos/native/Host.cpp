@@ -219,6 +219,13 @@ void Host::Execute(const std::string &json) {
     dirty_ = true;
   } else if (type == "dismissSize") {
     size_axis_ = 0;
+  } else if (type == "requestFile" && game_) {
+    // Use the normal shortcut path so native pickers and file state stay in sync.
+    const int key = int(Number(c, "value")) == 2 ? GLFW_KEY_S : GLFW_KEY_O;
+    game_->PrepareInput(delay_ < 0);
+    game_->Window()->SendKey(key, GLFW_PRESS, GLFW_MOD_CONTROL);
+    game_->Window()->SendKey(key, GLFW_RELEASE, GLFW_MOD_CONTROL);
+    dirty_ = true;
   } else if (type == "file" && game_) {
     file_revision_ = int(Number(c, "request"));
     // User file errors must not stop the rendering loop.

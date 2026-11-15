@@ -233,6 +233,19 @@
   });
 }
 
+- (void)requestFileAction:(NSInteger)action {
+  const uint64_t generation = _generation;
+  [self wakeGame];
+  dispatch_async(LongMarchRenderQueue(), ^{
+    if (self->_generation != generation || !self->_session || !self->_session->Game())
+      return;
+    auto *window = self->_session->Game()->Window();
+    const int key = action == 2 ? GLFW_KEY_S : GLFW_KEY_O;
+    window->SendKey(key, GLFW_PRESS, GLFW_MOD_CONTROL);
+    window->SendKey(key, GLFW_RELEASE, GLFW_MOD_CONTROL);
+  });
+}
+
 - (void)completeFile:(NSString *)path completion:(void (^)(NSString *))completion {
   uint64_t generation = _generation;
   dispatch_async(LongMarchRenderQueue(), ^{

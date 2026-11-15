@@ -766,6 +766,15 @@ private struct DesktopGameView: UIViewRepresentable {
     private weak var library: UIViewController?
     private var libraryHandled = false
     private var smokePatternLoaded = false
+    private var captureStarted = false
+
+    func captureAfterFirstFrame() {
+      guard !captureStarted,
+        ProcessInfo.processInfo.environment["LONGMARCH_CAPTURE_PATTERN"] != nil
+      else { return }
+      captureStarted = true
+      view?.renderer.requestFileAction(1)
+    }
 
     func requestSize(_ axis: Int, value: Int, bounds: CGRect) {
       guard let view, let root = view.window?.rootViewController,
@@ -831,13 +840,27 @@ private struct DesktopGameView: UIViewRepresentable {
       }
       // LONGMARCH_SMOKE_PATTERN opens a built-in pattern by name instead of the library.
       if action == 1, !smokePatternLoaded,
-        let name = ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_PATTERN"],
+        let name = ProcessInfo.processInfo.environment["LONGMARCH_CAPTURE_PATTERN"]
+          ?? ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_PATTERN"],
         let pattern = BuiltinPattern.all.first(where: { $0.name == name })
       {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Builtin.cells")
         if (try? pattern.cells.write(to: url, atomically: true, encoding: .utf8)) != nil {
           smokePatternLoaded = true
-          complete(url)
+          view.renderer.completeFile(url.path) { [weak self] message in
+            guard let self else { return }
+            self.error(message)
+            guard message == nil, self.captureStarted else { return }
+            let env = ProcessInfo.processInfo.environment
+            if let text = env["LONGMARCH_CAPTURE_ZOOM"], let zoom = Double(text),
+              zoom.isFinite, zoom > 0
+            {
+              self.view?.renderer.input(6, x: 0.5, y: 0.5, value: min(10, zoom))
+            }
+            if let panel = env["LONGMARCH_CAPTURE_PANEL"], panel == "library" || panel == "save" {
+              self.view?.renderer.requestFileAction(panel == "save" ? 2 : 1)
+            }
+          }
           return
         }
       }
@@ -940,7 +963,9 @@ private struct DesktopGameView: UIViewRepresentable {
       coordinator?.requestSize(axis, value: value, bounds: bounds)
     }
     view.renderer.start(view: view, resources: GameResources.url) {
-      _, _, fps, _, _, _, _, error in status(fps, error)
+      [weak coordinator = context.coordinator] _, _, fps, _, _, _, frames, error in
+      status(fps, error)
+      if error == nil && frames > 0 { coordinator?.captureAfterFirstFrame() }
     }
     if let file = ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_FILE"] {
       // Opens the pattern library the way the open/save buttons do, for screenshots.

@@ -19,6 +19,7 @@ typedef void (^DemoProgress)(double frameSeconds,
 // bounds is the tapped slider as fractions of the view.
 @property(nonatomic, copy, nullable) void (^sizeRequest)(NSInteger axis, NSInteger value, CGRect bounds);
 - (void)setGridDimension:(NSInteger)axis value:(NSInteger)value;
+- (void)requestFileAction:(NSInteger)action;
 - (void)completeFile:(NSString *)path completion:(void (^)(NSString *_Nullable error))completion;
 - (void)input:(NSInteger)kind x:(double)x y:(double)y value:(double)value;
 - (void)setGameIconRotation:(float)radians;

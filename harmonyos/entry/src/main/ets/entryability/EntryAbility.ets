@@ -1,9 +1,20 @@
-import { UIAbility, ConfigurationConstant } from '@kit.AbilityKit';
+import { UIAbility, ConfigurationConstant, Want } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import native from 'libgameoflife.so';
 
 export default class EntryAbility extends UIAbility {
-  onCreate(): void {
+  onCreate(want: Want): void {
+    // Explicit capture arguments only; ordinary launches never seed a board.
+    const pattern = want.parameters?.['capturePattern'];
+    const zoom = want.parameters?.['captureZoom'];
+    const panel = want.parameters?.['capturePanel'];
+    AppStorage.setOrCreate('capturePattern', typeof pattern === 'string' ? pattern : '');
+    AppStorage.setOrCreate('captureZoom', typeof zoom === 'string' ? zoom : '1');
+    AppStorage.setOrCreate('capturePanel', typeof panel === 'string' ? panel : '');
+    const language = want.parameters?.['captureLanguage'];
+    if (typeof language === 'string' && (language === 'en-US' || language === 'zh-CN')) {
+      this.context.getApplicationContext().setLanguage(language);
+    }
     this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
   }
   onWindowStageCreate(stage: window.WindowStage): void {
