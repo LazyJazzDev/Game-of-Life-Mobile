@@ -173,15 +173,11 @@ int main(int argc, char **argv) {
   // A sleeping tile must wake after edits, including edits across edges/corners.
   // Compare every phase with a dense CPU simulation, not only its final image.
   auto verify_steps = [&](int count, bool periodic) {
-    std::vector<uint8_t> heat(cpu.size());
     ObjPtr<ICommandContext> step_commands = queue->CreateCommandContext();
     for (int i = 0; i < count; ++i) {
       if (!simulation.Step(step_commands.Get(), periodic))
         return false;
-      auto previous = cpu;
       cpu = Reference(cpu, 512, periodic);
-      for (size_t c = 0; c < cpu.size(); ++c)
-        heat[c] = cpu[c] ^ previous[c];
     }
     if (!simulation.UpdateMipmaps(step_commands.Get()))
       return false;
@@ -189,18 +185,11 @@ int main(int argc, char **argv) {
     ObjPtr<IDownloadToken> mip_readback = step_commands->CmdDownloadBuffer(simulation.Mipmaps(), 0, mips.size() * 4);
     auto readback = ObjPtr<IDownloadToken>(
         step_commands->CmdDownloadBuffer(simulation.Cells(), 0, simulation.WordCount() * sizeof(uint32_t)));
-    if (!simulation.UpdateMipmaps(step_commands.Get(), true))
-      return false;
-    std::vector<uint32_t> heat_mips(mips.size());
-    ObjPtr<IDownloadToken> heat_readback =
-        step_commands->CmdDownloadBuffer(simulation.Mipmaps(), 0, heat_mips.size() * 4);
     auto submitted = ObjPtr<ISubmissionToken>(step_commands->Submit());
     return readback && submitted && submitted->WaitHost() &&
            readback->CopyTo(actual.data(), actual.size() * sizeof(uint32_t)) && actual == Pack(cpu, 512) &&
            mip_readback && mip_readback->CopyTo(mips.data(), mips.size() * 4) &&
-           CheckMipmaps(cpu, argc >= 3 ? uint32_t(std::stoul(argv[2])) : 256u, mips) && heat_readback &&
-           heat_readback->CopyTo(heat_mips.data(), heat_mips.size() * 4) &&
-           CheckMipmaps(heat, argc >= 3 ? uint32_t(std::stoul(argv[2])) : 256u, heat_mips);
+           CheckMipmaps(cpu, argc >= 3 ? uint32_t(std::stoul(argv[2])) : 256u, mips);
   };
   auto submit_upload = [&]() {
     ObjPtr<ICommandContext> upload = queue->CreateCommandContext();

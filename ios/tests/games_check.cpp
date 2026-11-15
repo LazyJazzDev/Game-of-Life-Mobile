@@ -90,12 +90,10 @@ int main(int argc, char **argv) {
             "Checker transition is not linear in projected span");
       Check(end.major == level + 1 && end.transition == 0, "Parent checker remains at one-screen span");
     }
-    Check(!life_demo::GridDetail::Heat(0.25f) && life_demo::GridDetail::Heat(0.249f),
-          "Heat threshold is not strictly over 16 cells per pixel");
     life_demo::GridRulerTiming ruler;
-    ruler.Zoom(10);
+    ruler.Activate(10);
     Check(ruler.Opacity(10) == 0 && ruler.Opacity(10.15) > 0.999f, "Ruler did not fade in");
-    ruler.Zoom(11);
+    ruler.Activate(11);
     Check(ruler.Opacity(13) > 0.999f && ruler.Opacity(13.175) > 0.49f && ruler.Opacity(13.175) < 0.51f &&
               ruler.Opacity(13.35) == 0,
           "Ruler did not hold two seconds after the last zoom and fade out");
@@ -250,17 +248,15 @@ int main(int argc, char **argv) {
         return true;
       };
       auto centre = (400 * 640 + 320) * 4;
-      Check(
-          (overview[centre] <= 2 || std::abs(int(overview[centre]) - int(255 * life_demo::GridDetail::kContrast)) <= 2),
-          "Empty heat view did not use a checker interval");
+      Check(overview[centre] >= 44 && overview[centre] <= 52, "Empty overview is not population shaded");
       window->MagnifyEvent().InvokeCallbacks(
           grassland::rhi::MagnifyGesture{0.5, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
       Settle(game);
       Check(same_grid(Pixels(game), overview), "Overview zoom went below the full-world fit limit");
       tap(576, 96);
       auto random_overview = Pixels(game);
-      Check(std::abs(int(random_overview[centre]) - int(overview[centre])) <= 2,
-            "Random fill incorrectly appeared as simulated change heat");
+      Check(random_overview[centre] > 72 && random_overview[centre] < 102,
+            "Random overview did not average live/dead coverage through mipmaps");
       window->MagnifyEvent().InvokeCallbacks(
           grassland::rhi::MagnifyGesture{1.0e6, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
       Settle(game);
