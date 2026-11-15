@@ -9,9 +9,11 @@ export default class EntryAbility extends UIAbility {
     const pattern = want.parameters?.['capturePattern'];
     const zoom = want.parameters?.['captureZoom'];
     const panel = want.parameters?.['capturePanel'];
+    const saveName = want.parameters?.['captureSaveName'];
     AppStorage.setOrCreate('capturePattern', typeof pattern === 'string' ? pattern : '');
     AppStorage.setOrCreate('captureZoom', typeof zoom === 'string' ? zoom : '1');
     AppStorage.setOrCreate('capturePanel', typeof panel === 'string' ? panel : '');
+    AppStorage.setOrCreate('captureSaveName', typeof saveName === 'string' ? saveName.trim() : '');
     const language = want.parameters?.['captureLanguage'];
     if (typeof language === 'string' && (language === 'en-US' || language === 'zh-CN')) {
       this.captureLanguage = language;

@@ -568,9 +568,16 @@ private struct PatternLibraryView: View {
   let system: () -> Void
   let cancel: () -> Void
   @State private var files = PatternLibrary.files()
-  @State private var name = "Life " + Date().formatted(
+  @State private var name = Self.captureSaveName ?? ("Life " + Date().formatted(
     .verbatim("\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits) \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)).\(minute: .twoDigits).\(second: .twoDigits)",
-      timeZone: .current, calendar: .current))
+      timeZone: .current, calendar: .current)))
+  private static var captureSaveName: String? {
+    let env = ProcessInfo.processInfo.environment
+    guard env["LONGMARCH_CAPTURE_PANEL"] == "save",
+      let value = env["LONGMARCH_CAPTURE_SAVE_NAME"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !value.isEmpty else { return nil }
+    return value
+  }
   @State private var replacing: URL?
   @State private var query = ""
   @State private var folderQuery = ""

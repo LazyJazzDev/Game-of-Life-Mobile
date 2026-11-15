@@ -237,6 +237,9 @@ or `save`. `captureLanguage` accepts `zh-CN` or `en-US` and sets the app languag
 The imported board stays paused. Stop the app before each new capture launch.
 For cloud shells that reject quoted names, `pi-orbital` and `koks-galaxy` are
 aliases for `pi orbital` and `Kok's galaxy`; they load the same built-in patterns.
+With `capturePanel=save`, `captureSaveName` pre-fills a localized display name
+instead of the timestamp for store screenshots. Empty values retain the normal
+default name. This does not save a file or change ordinary launches.
 
 In the Huawei cloud device's **Control parameters → Shell script** panel:
 

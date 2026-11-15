@@ -573,6 +573,10 @@ struct Index {
     const now = new Date();
     this.saveName = `Life ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
       `${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}`;
+    if ((AppStorage.get<string>('capturePanel') ?? '') === 'save') {
+      const captureName = AppStorage.get<string>('captureSaveName') ?? '';
+      if (captureName.length > 0) this.saveName = captureName;
+    }
     this.libraryVisible = true;
   }
   // Runs one choice from the library after closing it; cancelling reaches the

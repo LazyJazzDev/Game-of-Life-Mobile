@@ -158,3 +158,6 @@ the camera and opens the requested panel. The board stays paused. No coordinate
 taps or fixed startup delays are required. With simctl, prefix these environment
 variables with `SIMCTL_CHILD_`; select the locale with `-AppleLanguages`.
 Do not combine these parameters with the older timed `LONGMARCH_SMOKE_*` hooks.
+For the save panel, set `LONGMARCH_CAPTURE_SAVE_NAME` to a localized display name
+so store captures do not include the default timestamp. Empty values retain the
+normal default name; the override is only used with `LONGMARCH_CAPTURE_PANEL=save`.
