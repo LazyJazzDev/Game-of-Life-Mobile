@@ -78,6 +78,10 @@ void DesktopGameSession::SetCutoutInsets(float left, float top, float right) {
   life_->SetCutoutInsets(left, top, right);
 }
 
+void DesktopGameSession::SetControlOcclusions(const std::vector<glm::vec4> &regions) {
+  life_->SetControlOcclusions(regions);
+}
+
 void DesktopGameSession::SetControlPixelSize(float pixels) {
   life_->SetControlPixelSize(pixels);
 }

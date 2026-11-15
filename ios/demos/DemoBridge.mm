@@ -165,6 +165,20 @@
   });
 }
 
+- (void)setGameControlOcclusions:(NSArray<NSValue *> *)regions {
+  std::vector<glm::vec4> rects;
+  for (NSValue *value in regions) {
+    CGRect r = value.CGRectValue;
+    rects.emplace_back(r.origin.x, r.origin.y, r.size.width, r.size.height);
+  }
+  const uint64_t generation = _generation;
+  [self wakeGame];
+  dispatch_async(LongMarchRenderQueue(), ^{
+    if (self->_generation == generation && self->_session && self->_session->Game())
+      self->_session->Game()->SetControlOcclusions(rects);
+  });
+}
+
 - (void)setGameControlPixelSize:(float)pixels {
   const uint64_t generation = _generation;
   [self wakeGame];

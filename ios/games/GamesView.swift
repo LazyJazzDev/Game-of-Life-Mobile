@@ -115,6 +115,7 @@ private final class GameCanvasView: UIView {
   private var controlExtentLimit: CGFloat?
   private var controlPixelSize: CGFloat?
   private var hasHinge = false
+  private var controlOcclusions: [CGRect]?
   private weak var layoutScreen: UIScreen?
   private var layoutSmokeRows: [[String: Any]] = []
   // The short edge, in points, beyond which controls stop growing (iPad).
@@ -132,6 +133,8 @@ private final class GameCanvasView: UIView {
         if !self.hasHinge {
           self.hasHinge = true
           self.stopOrientationTracking()
+          GameAppDelegate.orientationMask = .all
+          self.window?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
           self.metal.renderer.setGameIconRotation(0)
         }
         self.setNeedsLayout()
@@ -145,6 +148,7 @@ private final class GameCanvasView: UIView {
 
   override func layoutSubviews() {
     super.layoutSubviews()
+    let previousOcclusions = controlOcclusions
     let screen = window?.screen
     let surfaceChanged = metal.bounds.size != bounds.size || layoutScreen !== screen
     if surfaceChanged {
@@ -187,15 +191,30 @@ private final class GameCanvasView: UIView {
           metal.renderer.setGameControlPixelSize(Float(pixels))
         }
       }
+      if #available(iOS 27.1, *), hasHinge, bounds.width > 0 {
+        // UIKit supplies actual camera/system exclusions in this view's
+        // coordinates, including interactive margins, on either display.
+        let regions = reservedRegions(kind: .occlusion).filter { $0.isActive }.map { region in
+          CGRect(x: region.frame.minX / bounds.width, y: region.frame.minY / bounds.height,
+                 width: region.frame.width / bounds.width, height: region.frame.height / bounds.height)
+        }
+        if controlOcclusions != regions {
+          controlOcclusions = regions
+          metal.renderer.setGameControlOcclusions(regions.map { NSValue(cgRect: $0) })
+        }
+      }
       let limit = Self.maxControlExtent / bounds.height
       if controlExtentLimit != limit {
         controlExtentLimit = limit
         metal.renderer.setGameControlExtentLimit(Float(limit))
       }
-      if surfaceChanged, ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_LAYOUT"] != nil {
+      if surfaceChanged || previousOcclusions != controlOcclusions,
+        ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_LAYOUT"] != nil
+      {
         layoutSmokeRows.append([
           "width_points": bounds.width, "height_points": bounds.height,
           "scale": window.screen.scale, "foldable": hasHinge,
+          "occlusions": (controlOcclusions ?? []).map { String(describing: $0) },
           "control_pixels": controlPixelSize ?? 0,
           "renderer": String(describing: ObjectIdentifier(metal.renderer)),
           "screen": String(describing: ObjectIdentifier(window.screen)),

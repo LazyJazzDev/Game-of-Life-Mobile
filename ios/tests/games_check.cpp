@@ -316,6 +316,39 @@ int main(int argc, char **argv) {
       std::cout << "PASS gol shared desktop renderer, input, animation, focus and orientation\n";
     }
     {
+      DemoSession game(argv[1]);
+      game.Game()->SetControlPixelSize(40);
+      game.Game()->SetCutoutInsets(0, .12f, 0);
+      game.Game()->SetControlOcclusions({});
+      game.Resize(640, 800);
+      Settle(game);
+      auto before = Pixels(game);
+      game.Game()->SetControlOcclusions({{.85f, 0, .15f, .18f}});
+      Settle(game);
+      auto after = Pixels(game);
+      auto same_pixel = [](const auto &a, const auto &b, int width, int x, int y) {
+        const size_t offset = (size_t(y) * width + x) * 4;
+        return std::equal(a.begin() + offset, a.begin() + offset + 4, b.begin() + offset);
+      };
+      Check(same_pixel(before, after, 640, 40, 40), "Corner cutout moved the opposite top action");
+      Check(!same_pixel(before, after, 640, 600, 40) && !same_pixel(before, after, 640, 524, 40),
+            "Portrait corner cutout did not move randomize horizontally");
+      for (int y = 100; y < 700; ++y)
+        for (int x = 80; x < 560; ++x)
+          Check(same_pixel(before, after, 640, x, y), "Corner cutout shifted the entire board");
+      game.Game()->SetControlOcclusions({});
+      game.Resize(800, 640);
+      Settle(game);
+      before = Pixels(game);
+      game.Game()->SetControlOcclusions({{.85f, 0, .15f, .18f}});
+      Settle(game);
+      after = Pixels(game);
+      Check(!same_pixel(before, after, 800, 760, 40) && !same_pixel(before, after, 800, 760, 135),
+            "Landscape corner cutout did not move its action vertically");
+      Check(same_pixel(before, after, 800, 40, 40), "Landscape cutout shifted the opposite rail");
+      std::cout << "PASS local camera avoidance preserves the board and opposite controls\n";
+    }
+    {
       // Foldable surfaces change size without changing their pixel density.
       life_demo::GameOfLife life("fold layout", 360, 780, 64, 64, grassland::rhi::BACKEND_API_METAL, true);
       life.InitializeHosted();
