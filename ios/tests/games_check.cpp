@@ -75,6 +75,11 @@ int main(int argc, char **argv) {
     Check(argc == 2, "usage: gol_games_check <resources>");
     grassland::rhi::ConfigureShaderCache({std::filesystem::path(argv[1]) / "shaders", true, true});
     CheckListenerMutation();
+    GridView zoom_limits;
+    zoom_limits.Zoom(1.0e-6f, glm::vec2{0}, 64.0f / 16384);
+    Check(zoom_limits.zoom == 64.0f / 16384, "Zoom does not reach the whole fixed world");
+    zoom_limits.Zoom(1.0e6f, glm::vec2{0}, 64.0f / 16384);
+    Check(zoom_limits.zoom == 12.0f, "Maximum magnification changed");
     SimulationClock clock;
     int steps = 0;
     clock.Advance(.2, true, 0, [&] { ++steps; });
@@ -202,32 +207,47 @@ int main(int argc, char **argv) {
       }
       std::filesystem::remove(path);
       game.Game()->EnableNativeSizeControls();
-      auto tapSize = [&](double x, double y) {
+      Check(game.Game()->SizeControlBounds(1) == glm::vec4(0) && game.Game()->SizeControlBounds(2) == glm::vec4(0),
+            "Removed size controls still have hit regions");
+      Check(game.Game()->TakeSizeControlRequest().x == 0, "Removed size controls requested a popup");
+      // Clear the world and fit all 16384 cells along each axis into the viewport.
+      auto tap = [&](double x, double y) {
         window->SendPointer(x, y);
         window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
         window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
-        return game.Game()->TakeSizeControlRequest();
+        leave();
       };
-      Check(tapSize(350, 716) == glm::ivec2(1, 64), "Tapping native width control changed its value");
-      Check(game.Game()->TakeSizeControlRequest().x == 0, "Size popup request was delivered twice");
-      game.Game()->SetGridDimension(1, 137);
-      game.Render();
-      Check(tapSize(250, 716) == glm::ivec2(1, 137), "Native size selection was not retained");
-      window->SendPointer(230, 716);
-      window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
-      window->SendPointer(320, 716);
-      window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
-      Check(game.Game()->TakeSizeControlRequest().x == 0, "Dragging the readout opened a popup");
-      Check(tapSize(250, 716) == glm::ivec2(1, 137), "Dragging the native readout changed grid width");
-      Check(tapSize(250, 752) == glm::ivec2(2, 64), "Height control opened the wrong dimension");
-      game.Game()->SetGridDimension(1, 400);
-      game.Game()->SetGridDimension(2, 1);
-      game.Render();
-      Check(tapSize(250, 716) == glm::ivec2(1, 256) && tapSize(250, 752) == glm::ivec2(2, 2),
-            "Native grid sizes escaped the supported range");
-      game.Game()->SetGridDimension(1, 64);
-      game.Game()->SetGridDimension(2, 64);
-      game.Render();
+      tap(64, 96);
+      window->MagnifyEvent().InvokeCallbacks(
+          grassland::rhi::MagnifyGesture{1.0e-6, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
+      Settle(game);
+      auto overview = Pixels(game);
+      auto same_grid = [](const auto &a, const auto &b) {
+        for (int y = 150; y < 650; ++y)
+          for (int x = 8; x < 632; ++x)
+            for (int c = 0; c < 4; ++c)
+              if (a[(y * 640 + x) * 4 + c] != b[(y * 640 + x) * 4 + c])
+                return false;
+        return true;
+      };
+      auto centre = (400 * 640 + 320) * 4;
+      Check(std::abs(int(overview[centre]) - 47) <= 2, "Minified empty grid did not use average cell color");
+      window->MagnifyEvent().InvokeCallbacks(
+          grassland::rhi::MagnifyGesture{0.5, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
+      Settle(game);
+      Check(same_grid(Pixels(game), overview), "Overview zoom went below the full-world fit limit");
+      tap(576, 96);
+      auto random_overview = Pixels(game);
+      Check(random_overview[centre] > 72 && random_overview[centre] < 102,
+            "Random overview did not average live/dead coverage through mipmaps");
+      window->MagnifyEvent().InvokeCallbacks(
+          grassland::rhi::MagnifyGesture{1.0e6, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
+      Settle(game);
+      auto maximum = Pixels(game);
+      window->MagnifyEvent().InvokeCallbacks(
+          grassland::rhi::MagnifyGesture{2, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
+      Settle(game);
+      Check(same_grid(Pixels(game), maximum), "Maximum zoom did not retain its clamp");
       // File feedback can last over a second; all animations must eventually sleep.
       for (int i = 0; i < 150 && std::isfinite(game.Game()->NextFrameDelay()); ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(16));

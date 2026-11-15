@@ -32,6 +32,51 @@ std::vector<uint8_t> Reference(const std::vector<uint8_t> &cells, uint32_t side,
   return result;
 }
 
+// Compare every mip texel against exact CPU population counts, including
+// packed tile-local levels and the global levels above the compute tile size.
+bool CheckMipmaps(const std::vector<uint8_t> &cells, uint32_t tile_size, const std::vector<uint32_t> &packed) {
+  uint32_t tile_levels = 0;
+  for (uint32_t n = tile_size; n > 1; n >>= 1)
+    ++tile_levels;
+  auto bits_at = [](uint32_t l) { return l == 1 ? 4u : l <= 3 ? 8u : l <= 7 ? 16u : 32u; };
+  std::vector<uint32_t> offsets(tile_levels + 2);
+  for (uint32_t l = 1; l <= tile_levels; ++l) {
+    uint32_t n = tile_size >> l;
+    offsets[l + 1] = offsets[l] + (n * n * bits_at(l) + 31) / 32;
+  }
+  const uint32_t stride = offsets.back(), tiles = 512 / tile_size;
+  uint32_t global_offset = tiles * tiles * stride;
+  std::vector<uint32_t> previous(cells.begin(), cells.end());
+  for (uint32_t level = 1, side = 256; side; ++level, side >>= 1) {
+    std::vector<uint32_t> current(side * side);
+    for (uint32_t y = 0; y < side; ++y)
+      for (uint32_t x = 0; x < side; ++x) {
+        uint32_t value = 0;
+        for (uint32_t dy = 0; dy < 2; ++dy)
+          for (uint32_t dx = 0; dx < 2; ++dx)
+            value += previous[(y * 2 + dy) * side * 2 + x * 2 + dx];
+        current[y * side + x] = value;
+        uint32_t actual;
+        if (level <= tile_levels) {
+          uint32_t n = tile_size >> level, bits = bits_at(level), per_word = 32 / bits;
+          uint32_t tile = (y / n) * tiles + x / n, local = (y % n) * n + x % n;
+          actual = (packed[tile * stride + offsets[level] + local / per_word] >> ((local % per_word) * bits)) &
+                   (0xffffffffu >> (32 - bits));
+        } else
+          actual = packed[global_offset + y * side + x];
+        if (actual != value) {
+          std::cerr << "Mip mismatch level=" << level << " x=" << x << " y=" << y << " expected=" << value
+                    << " got=" << actual << "\n";
+          return false;
+        }
+      }
+    if (level > tile_levels)
+      global_offset += side * side;
+    previous = std::move(current);
+  }
+  return true;
+}
+
 int main(int argc, char **argv) {
   if (argc < 2 || argc > 5)
     return 1;
@@ -134,11 +179,17 @@ int main(int argc, char **argv) {
         return false;
       cpu = Reference(cpu, 512, periodic);
     }
+    if (!simulation.UpdateMipmaps(step_commands.Get()))
+      return false;
+    std::vector<uint32_t> mips(simulation.Mipmaps()->GetDesc().size / 4);
+    ObjPtr<IDownloadToken> mip_readback = step_commands->CmdDownloadBuffer(simulation.Mipmaps(), 0, mips.size() * 4);
     auto readback = ObjPtr<IDownloadToken>(
         step_commands->CmdDownloadBuffer(simulation.Cells(), 0, simulation.WordCount() * sizeof(uint32_t)));
     auto submitted = ObjPtr<ISubmissionToken>(step_commands->Submit());
     return readback && submitted && submitted->WaitHost() &&
-           readback->CopyTo(actual.data(), actual.size() * sizeof(uint32_t)) && actual == Pack(cpu, 512);
+           readback->CopyTo(actual.data(), actual.size() * sizeof(uint32_t)) && actual == Pack(cpu, 512) &&
+           mip_readback && mip_readback->CopyTo(mips.data(), mips.size() * 4) &&
+           CheckMipmaps(cpu, argc >= 3 ? uint32_t(std::stoul(argv[2])) : 256u, mips);
   };
   auto submit_upload = [&]() {
     ObjPtr<ICommandContext> upload = queue->CreateCommandContext();
@@ -147,6 +198,13 @@ int main(int argc, char **argv) {
     ObjPtr<ISubmissionToken> submitted = upload->Submit();
     return submitted && submitted->WaitHost();
   };
+  for (auto &cell : cpu)
+    cell = random() & 1;
+  if (!submit_upload() || !verify_steps(2, true))
+    return 34;
+  cpu.assign(512 * 512, 1);
+  if (!submit_upload() || !verify_steps(0, true))
+    return 35;
   cpu.assign(512 * 512, 0);
   commands = queue->CreateCommandContext();
   if (!simulation.Fill(commands.Get(), false))
