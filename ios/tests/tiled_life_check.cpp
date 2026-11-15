@@ -17,14 +17,14 @@ std::vector<uint32_t> Pack(const std::vector<uint8_t> &cells, uint32_t side) {
   return packed;
 }
 
-std::vector<uint8_t> Reference(const std::vector<uint8_t> &cells, uint32_t side) {
+std::vector<uint8_t> Reference(const std::vector<uint8_t> &cells, uint32_t side, bool periodic = true) {
   auto result = cells;
   for (int y = 0; y < int(side); ++y) {
     for (int x = 0; x < int(side); ++x) {
       int neighbors = 0;
       for (int dy = -1; dy <= 1; ++dy)
         for (int dx = -1; dx <= 1; ++dx)
-          if (dx || dy)
+          if ((dx || dy) && (periodic || (x + dx >= 0 && y + dy >= 0 && x + dx < int(side) && y + dy < int(side))))
             neighbors += cells[((y + dy + side) % side) * side + (x + dx + side) % side];
       result[y * side + x] = neighbors == 3 || (neighbors == 2 && cells[y * side + x]);
     }
@@ -33,7 +33,7 @@ std::vector<uint8_t> Reference(const std::vector<uint8_t> &cells, uint32_t side)
 }
 
 int main(int argc, char **argv) {
-  if (argc != 2)
+  if (argc != 2 && argc != 3)
     return 1;
   std::ifstream input(argv[1]);
   const std::string source{std::istreambuf_iterator<char>(input), {}};
@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
     return 2;
   ObjPtr<IQueue> queue = device->GetQueue(QUEUE_TYPE_MAIN);
   life_demo::TiledLife simulation;
-  if (!simulation.Initialize(device.Get(), source, 2, 1))
+  if (!simulation.Initialize(device.Get(), source, 2, argc == 3 ? uint32_t(std::stoul(argv[2])) : 256u))
     return 3;
   std::mt19937 random(84911);
   std::vector<uint8_t> cpu(512 * 512);
@@ -73,5 +73,37 @@ int main(int argc, char **argv) {
       return 7;
     }
   }
-  std::cout << "PASS 512x512, 12 generations, in-place byte-cache update, edges/corners/wrap\n";
+  // Eight live neighbors must die without carrying into the next packed cell.
+  // Fixed boundaries additionally leave exactly the four live corner cells.
+  for (bool periodic : {false, true}) {
+    cpu.assign(512 * 512, 1);
+    commands = queue->CreateCommandContext();
+    if (!simulation.Upload(commands.Get(), Pack(cpu, 512)) || !simulation.Step(commands.Get(), periodic))
+      return 8;
+    download = commands->CmdDownloadBuffer(simulation.Cells(), 0, actual.size() * 4);
+    submission = commands->Submit();
+    if (!submission || !submission->WaitHost() || !download || !download->CopyTo(actual.data(), actual.size() * 4))
+      return 9;
+    if (actual != Pack(Reference(cpu, 512, periodic), 512))
+      return 10;
+  }
+  commands = queue->CreateCommandContext();
+  cpu.assign(512 * 512, 0);
+  if (!simulation.Fill(commands.Get(), false))
+    return 11;
+  for (uint32_t x = 254; x <= 256; ++x) {
+    cpu[255 * 512 + x] = 1;
+    if (!simulation.Toggle(commands.Get(), x, 255))
+      return 12;
+  }
+  if (!simulation.Step(commands.Get()))
+    return 13;
+  download = commands->CmdDownloadBuffer(simulation.Cells(), 0, actual.size() * 4);
+  submission = commands->Submit();
+  if (!submission || !submission->WaitHost() || !download || !download->CopyTo(actual.data(), actual.size() * 4))
+    return 14;
+  if (actual != Pack(Reference(cpu, 512), 512))
+    return 15;
+  std::cout
+      << "PASS 512x512, 12 random generations, four-bit cache, count-eight overflow, fixed/wrapped edges and cross-tile edits\n";
 }
