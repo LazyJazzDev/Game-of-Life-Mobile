@@ -6,7 +6,7 @@ Raw captures come from capture_screenshots.sh (<device>-<lang>-<n>-<name>.png).
 Devices: iphone (6.9", 1320x2868), iphone-6.5 (1284x2778, from the iPhone
 captures), ipad (13", 2064x2752), and harmony-phone (1080x1920).
 """
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops
 import numpy as np, os, sys, json
 from pathlib import Path
 RAW, OUT = sys.argv[1], sys.argv[2]
@@ -39,6 +39,11 @@ if plan:
     for path in sorted(Path(RAW).glob('*-zh-Hans-discover.png')):
         name = path.name.removesuffix('-zh-Hans-discover.png')
         with Image.open(path) as shot: W, H = shot.size
+        # Store-specific marketing canvas; the actual capture keeps its aspect ratio.
+        if name in plan.get('canvas', {}):
+            W, H = plan['canvas'][name]
+            if W <= 0 or H <= 0:
+                raise ValueError(f'Invalid canvas size for {name}')
         reference = dict(title=104,sub=54,ty=210,sy=330,top=450,bottom=110,r=44) if name == 'ipad' else dict(title=92,sub=48,ty=250,sy=365,top=500,bottom=120,r=72)
         baseW, baseH = (2064,2752) if name == 'ipad' else (1320,2868)
         dev[name] = dict(W=W,H=H,**{k:round(v*(H/baseH if k in ['ty','sy','top','bottom'] else min(W/baseW,H/baseH))) for k,v in reference.items()})
@@ -47,6 +52,36 @@ def fit(s,size,idx,maxw):
         f=ImageFont.truetype(F,size,index=idx)
         if f.getlength(s)<=maxw or size<20: return f
         size-=2
+def duo_outer_mask(width, height):
+    # Apple Simulator iPhone Duo framebufferMask, 466 x 678 point outer display.
+    # The hinge-side corners are small; the opposite corners are large continuous curves.
+    points = [(10.25554, 678), (390.3654, 678)]
+    curves = [
+        (416.6652,678,426.2021,675.2616,435.8169,670.1196),
+        (445.4318,664.9775,452.9775,657.4318,458.1196,647.8169),
+        (463.2616,638.2021,466,628.6652,466,602.3654),
+        (466,75.63461),
+        (466,49.33481,463.2616,39.79787,458.1196,30.18305),
+        (452.9775,20.56824,445.4318,13.02247,435.8169,7.880415),
+        (426.2021,2.738356,416.6652,0,390.3654,0),
+        (10.25554,0),
+        (6.689466,0,5.396321,.3713024,4.092617,1.068531),
+        (2.788913,1.765759,1.765759,2.788913,1.068531,4.092617),
+        (.3713024,5.396321,0,6.689466,0,10.25554),
+        (0,667.7445),
+        (0,671.3105,.3713024,672.6037,1.068531,673.9074),
+        (1.765759,675.2111,2.788913,676.2342,4.092617,676.9315),
+        (5.396321,677.6287,6.689466,678,10.25554,678)]
+    for curve in curves:
+        if len(curve) == 2:
+            points.append(curve)
+            continue
+        a = points[-1]; b, c, e = curve[:2], curve[2:4], curve[4:]
+        for t in np.linspace(0, 1, 33)[1:]:
+            points.append(tuple((1-t)**3*a[k]+3*(1-t)**2*t*b[k]+3*(1-t)*t*t*c[k]+t**3*e[k] for k in (0,1)))
+    mask = Image.new('L', (width*2, height*2), 0)
+    ImageDraw.Draw(mask).polygon([(x/466*width*2,(678-y)/678*height*2) for x,y in points], fill=255)
+    return mask.resize((width,height), Image.Resampling.LANCZOS)
 for d in args or (list(dev) if plan else ['iphone','iphone-6.5','ipad']):
     c=dev[d]; W,H=c['W'],c['H']
     y,x=np.mgrid[0:H,0:W]; t=((x/W)+(y/H))/2
@@ -67,10 +102,21 @@ for d in args or (list(dev) if plan else ['iphone','iphone-6.5','ipad']):
             x0=(W-sw)//2; y0=c['top']; r=c['r']
             mask=Image.new('L',(sw,sh),0); ImageDraw.Draw(mask).rounded_rectangle((0,0,sw-1,sh-1),radius=r,fill=255)
             shadow=Image.new('RGBA',(W,H),(0,0,0,0)); ImageDraw.Draw(shadow).rounded_rectangle((x0,y0+20,x0+sw,y0+sh+20),radius=r,fill=(0,0,0,140))
+            if d == 'iphone-duo-outer':
+                mask = duo_outer_mask(sw, sh)
+                shadow = Image.new('RGBA',(W,H),(0,0,0,0))
+                shadow.paste((0,0,0,140),(x0,y0+20,x0+sw,y0+sh+20),mask)
             canvas=Image.alpha_composite(canvas,shadow.filter(ImageFilter.GaussianBlur(30)))
             canvas.paste(shot,(x0,y0),mask)
             dr=ImageDraw.Draw(canvas)
-            dr.rounded_rectangle((x0,y0,x0+sw-1,y0+sh-1),radius=r,outline=(255,255,255,40),width=3)
+            if d == 'iphone-duo-outer':
+                # Pad before erosion so the straight screen edges also receive a border.
+                padded = Image.new('L',(sw+6,sh+6),0); padded.paste(mask,(3,3))
+                inner = padded.filter(ImageFilter.MinFilter(7)).crop((3,3,sw+3,sh+3))
+                border = ImageChops.subtract(mask,inner)
+                canvas.paste((255,255,255,40),(x0,y0,x0+sw,y0+sh),border)
+            else:
+                dr.rounded_rectangle((x0,y0,x0+sw-1,y0+sh-1),radius=r,outline=(255,255,255,40),width=3)
             dr.text((W/2,c['ty']),title,font=fit(title,c['title'],1,W*0.9),fill=(240,244,250),anchor='mm')
             dr.text((W/2,c['sy']),sub,font=fit(sub,c['sub'],0,W*0.9),fill=(190,198,210),anchor='mm')
             canvas.convert('RGB').save(f'{OUT}/{d}/{lang}/{i}-{name}.png',optimize=True)
