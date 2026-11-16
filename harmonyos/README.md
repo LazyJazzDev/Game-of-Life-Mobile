@@ -255,3 +255,15 @@ aa start -b net.lazyjazz.gameoflife -a EntryAbility --ps capturePattern pulsar -
 
 Capture through the cloud screenshot panel after the real UI settles. Use the
 same pattern and zoom parameters on iOS; do not substitute other device frames.
+
+### Canvas confirmation and recovery
+
+Reset and Randomize require a localized system confirmation dialog; dismissing
+or canceling it preserves the canvas and previous play/pause state. On background
+entry the ability waits for the render thread to checkpoint the full compressed
+world to `filesDir/LastCanvas.gol`. A fresh launch restores it paused, after privacy
+consent and native initialization. A temporary file and atomic replacement protect
+the previous snapshot from incomplete writes. This private snapshot is independent
+of My Patterns; explicit screenshot capture sessions do not read or replace it.
+An abrupt process kill without a background callback restores the last completed
+checkpoint.

@@ -30,3 +30,15 @@
 "Built-in patterns are adapted from the Life Lexicon by Stephen A. Silver et al. and licensed under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)." = "Built-in patterns are adapted from the Life Lexicon by Stephen A. Silver et al. and licensed under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).";
 "Game error" = "Game error";
 "OK" = "OK";
+
+"Reset canvas?" = "Reset canvas?";
+
+"Randomize canvas?" = "Randomize canvas?";
+
+"This will clear all cells on the canvas." = "This will clear all cells on the canvas.";
+
+"This will replace all cells with a new random pattern." = "This will replace all cells with a new random pattern.";
+
+"Reset" = "Reset";
+
+"Randomize" = "Randomize";

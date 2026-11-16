@@ -31,6 +31,10 @@ class DesktopGameSession {
   grassland::rhi::IDevice *Device() const;
   grassland::rhi::IImage *Image() const;
   life_demo::HostedWindow *Window() const;
+  int ConfirmationRequest() const;
+  void CompleteConfirmation(bool accepted);
+  std::string SaveSession(const std::string &path);
+  std::string RestoreSession(const std::string &path);
   int FileRequest() const;
   std::string CompleteFile(const std::string &path);
 

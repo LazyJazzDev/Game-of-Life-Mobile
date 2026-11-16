@@ -96,6 +96,7 @@ void Host::Extract(NativeResourceManager *manager, const std::string &directory)
   document.Parse(manifest.c_str());
   if (document.HasParseError() || !document.IsObject() || !document.HasMember("files") || !document["files"].IsArray())
     throw std::runtime_error("Invalid resource manifest");
+  session_path_ = std::filesystem::path(directory) / "LastCanvas.gol";
   auto root = std::filesystem::path(directory) / ("resources-" + Digest(manifest).substr(0, 20));
   if (!std::filesystem::exists(root / ".complete")) {
     for (auto &entry : document["files"].GetArray()) {
@@ -157,7 +158,31 @@ void Host::Detach() {
   wait.get();
 }
 
+void Host::Checkpoint() {
+  if (!game_ || transient_session_ || session_path_.empty())
+    return;
+  const auto error = game_->SaveSession(session_path_.string());
+  if (!error.empty())
+    fprintf(stderr, "Canvas checkpoint: %s\n", error.c_str());
+}
+
+void Host::Background() {
+  auto done = std::make_shared<std::promise<void>>();
+  auto wait = done->get_future();
+  Post([this, done] {
+    try {
+      Execute("{\"type\":\"active\",\"value\":false}");
+      Checkpoint();
+    } catch (const std::exception &error) {
+      fprintf(stderr, "Canvas checkpoint: %s\n", error.what());
+    }
+    done->set_value();
+  });
+  wait.get();
+}
+
 void Host::Stop() {
+  Checkpoint();
   surface_.reset();
   game_.reset();
   dirty_ = false;
@@ -202,7 +227,16 @@ void Host::Execute(const std::string &json) {
     grassland::rhi::ConfigureShaderCache({resources_ / "shaders", true, false});
     game_ = std::make_unique<DesktopGameSession>(grassland::rhi::BACKEND_API_VULKAN);
     game_->EnableNativeSizeControls();
+    transient_session_ = Boolean(c, "value");
+    if (!transient_session_) {
+      const auto error = game_->RestoreSession(session_path_.string());
+      if (!error.empty())
+        fprintf(stderr, "Canvas restore: %s\n", error.c_str());
+    }
     Resize();
+    dirty_ = true;
+  } else if (type == "confirm" && game_) {
+    game_->CompleteConfirmation(Boolean(c, "value"));
     dirty_ = true;
   } else if (type == "size" && game_) {
     size_value_ = int(std::clamp(Number(c, "value", 64), 2.0, 256.0));
@@ -329,6 +363,7 @@ void Host::Publish() {
   text("resources", resources_.string());
   number("fps", fps_);
   number("frames", frames_);
+  number("confirmationRequest", game_ ? game_->ConfirmationRequest() : 0);
   number("fileRequest", game_ ? game_->FileRequest() : 0);
   number("fileRevision", file_revision_);
   number("sizeAxis", size_axis_);

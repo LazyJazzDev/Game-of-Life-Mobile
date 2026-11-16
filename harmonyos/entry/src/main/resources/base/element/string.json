@@ -167,6 +167,30 @@
     {
       "name": "privacy_retry",
       "value": "Retry"
+    },
+    {
+      "name": "reset_canvas_title",
+      "value": "Reset canvas?"
+    },
+    {
+      "name": "randomize_canvas_title",
+      "value": "Randomize canvas?"
+    },
+    {
+      "name": "reset_canvas_message",
+      "value": "This will clear all cells on the canvas."
+    },
+    {
+      "name": "randomize_canvas_message",
+      "value": "This will replace all cells with a new random pattern."
+    },
+    {
+      "name": "reset_canvas",
+      "value": "Reset"
+    },
+    {
+      "name": "randomize_canvas",
+      "value": "Randomize"
     }
   ]
 }

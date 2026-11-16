@@ -42,6 +42,6 @@ export default class EntryAbility extends UIAbility {
   onForeground(): void {
     AppStorage.setOrCreate('privacyForeground', Date.now());
     if (AppStorage.get<boolean>('privacyNativeReady')) native.command('{"type":"active","value":true}'); }
-  onBackground(): void { if (AppStorage.get<boolean>('privacyNativeReady')) native.command('{"type":"active","value":false}'); }
+  onBackground(): void { if (AppStorage.get<boolean>('privacyNativeReady')) native.background(); }
   onWindowStageDestroy(): void { if (AppStorage.get<boolean>('privacyNativeReady')) native.command('{"type":"stop"}'); }
 }

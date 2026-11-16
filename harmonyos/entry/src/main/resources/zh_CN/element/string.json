@@ -167,6 +167,30 @@
     {
       "name": "privacy_retry",
       "value": "重试"
+    },
+    {
+      "name": "reset_canvas_title",
+      "value": "重置画布？"
+    },
+    {
+      "name": "randomize_canvas_title",
+      "value": "随机化画布？"
+    },
+    {
+      "name": "reset_canvas_message",
+      "value": "这会清空画布上的所有细胞。"
+    },
+    {
+      "name": "randomize_canvas_message",
+      "value": "这会用新的随机图案替换画布上的所有细胞。"
+    },
+    {
+      "name": "reset_canvas",
+      "value": "重置"
+    },
+    {
+      "name": "randomize_canvas",
+      "value": "随机化"
     }
   ]
 }

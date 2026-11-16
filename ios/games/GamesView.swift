@@ -783,6 +783,27 @@ private struct DesktopGameView: UIViewRepresentable {
       view?.renderer.requestFileAction(1)
     }
 
+    func confirmDestructiveAction(_ action: Int) {
+      guard let view, let root = view.window?.rootViewController,
+        root.presentedViewController == nil
+      else {
+        view?.renderer.completeConfirmation(false)
+        return
+      }
+      let reset = action == 1
+      let alert = UIAlertController(
+        title: NSLocalizedString(reset ? "Reset canvas?" : "Randomize canvas?", comment: ""),
+        message: NSLocalizedString(reset ? "This will clear all cells on the canvas." : "This will replace all cells with a new random pattern.", comment: ""),
+        preferredStyle: .alert)
+      alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel) { [weak view] _ in
+        view?.renderer.completeConfirmation(false)
+      })
+      alert.addAction(UIAlertAction(title: NSLocalizedString(reset ? "Reset" : "Randomize", comment: ""), style: .destructive) { [weak view] _ in
+        view?.renderer.completeConfirmation(true)
+      })
+      root.present(alert, animated: true)
+    }
+
     func requestSize(_ axis: Int, value: Int, bounds: CGRect) {
       guard let view, let root = view.window?.rootViewController,
         root.presentedViewController == nil
@@ -963,6 +984,9 @@ private struct DesktopGameView: UIViewRepresentable {
     let view = canvas.metal
     context.coordinator.view = view
     context.coordinator.error = { status(0, $0) }
+    view.renderer.confirmationRequest = { [weak coordinator = context.coordinator] action in
+      coordinator?.confirmDestructiveAction(action)
+    }
     view.renderer.fileRequest = { [weak coordinator = context.coordinator] action in
       coordinator?.request(action)
     }

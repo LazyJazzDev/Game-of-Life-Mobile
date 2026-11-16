@@ -304,14 +304,53 @@ int main(int argc, char **argv) {
       Check(game.Game()->SizeControlBounds(1) == glm::vec4(0) && game.Game()->SizeControlBounds(2) == glm::vec4(0),
             "Removed size controls still have hit regions");
       Check(game.Game()->TakeSizeControlRequest().x == 0, "Removed size controls requested a popup");
+      Settle(game);
       // Clear the world and fit all 16384 cells along each axis into the viewport.
       auto tap = [&](double x, double y) {
+        window->CursorEnterEvent().InvokeCallbacks(true);
         window->SendPointer(x, y);
         window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
         window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
         leave();
       };
+      const auto session_path = std::filesystem::temp_directory_path() / "gol-session-test.gol";
+      auto snapshot = [&] {
+        Check(game.Game()->SaveSession(session_path.string()).empty(), "Session checkpoint failed");
+        std::ifstream input(session_path, std::ios::binary);
+        std::vector<uint32_t> cells;
+        std::string error;
+        Check(life_demo::ReadTiledState(input, cells, error), "Session checkpoint is invalid");
+        return cells;
+      };
+      const auto original = snapshot();
       tap(64, 96);
+      Check(game.Game()->ConfirmationRequest() == 1, "Reset did not request confirmation");
+      Check(snapshot() == original, "Reset changed cells before confirmation");
+      game.Game()->CompleteConfirmation(false);
+      Check(snapshot() == original, "Cancel reset changed cells");
+      tap(576, 96);
+      Check(game.Game()->ConfirmationRequest() == 2, "Randomize did not request confirmation");
+      game.Game()->CompleteConfirmation(false);
+      Check(snapshot() == original, "Cancel randomize changed cells");
+      {
+        DemoSession restored(argv[1]);
+        Check(restored.Game()->RestoreSession(session_path.string()).empty(), "Session restore failed");
+        const auto copy = session_path.string() + ".copy";
+        Check(restored.Game()->SaveSession(copy).empty(), "Restored session checkpoint failed");
+        std::ifstream input(copy, std::ios::binary);
+        std::vector<uint32_t> cells;
+        std::string error;
+        Check(life_demo::ReadTiledState(input, cells, error) && cells == original, "Restart changed canvas cells");
+        Check(!restored.Game()->SaveSession(copy + "/missing/file").empty(), "Failed checkpoint reported success");
+        std::filesystem::remove(copy);
+      }
+      tap(64, 96);
+      game.Game()->CompleteConfirmation(true);
+      const auto empty = snapshot();
+      Check(std::all_of(empty.begin(), empty.end(), [](auto word) { return word == 0; }),
+            "Confirmed reset did not clear canvas");
+      std::filesystem::remove(session_path);
+      std::cout << "PASS confirmation and session restart: exact cells, canceled actions, atomic checkpoint failure\n";
       window->MagnifyEvent().InvokeCallbacks(
           grassland::rhi::MagnifyGesture{1.0e-6, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
       Settle(game);
@@ -331,6 +370,8 @@ int main(int argc, char **argv) {
       Settle(game);
       Check(same_grid(Pixels(game), overview), "Overview zoom went below the full-world fit limit");
       tap(576, 96);
+      game.Game()->CompleteConfirmation(true);
+      Settle(game);
       auto random_overview = Pixels(game);
       Check(random_overview[centre] > 72 && random_overview[centre] < 102,
             "Random overview did not average live/dead coverage through mipmaps");

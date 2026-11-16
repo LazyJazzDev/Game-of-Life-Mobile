@@ -10,6 +10,7 @@ DesktopGameSession::DesktopGameSession(grassland::rhi::BackendAPI backend) {
   life_ = std::make_unique<life_demo::GameOfLife>("Game of Life", 1280, 720, extent ? extent : grid_size::kDefault,
                                                   extent ? extent : grid_size::kDefault, backend, true);
   life_->EnableTiledSimulation();
+  life_->EnableNativeConfirmation();
   if (extent) {
     life_->SetRandomInitialCells(.3f, 42);
     life_->SetInitialPlaying(true);
@@ -108,4 +109,20 @@ bool DesktopGameSession::WaitGPU() {
 
 grassland::rhi::IQueue *DesktopGameSession::Queue() const {
   return life_->Queue();
+}
+
+int DesktopGameSession::ConfirmationRequest() const {
+  return life_->ConfirmationRequest();
+}
+
+void DesktopGameSession::CompleteConfirmation(bool accepted) {
+  life_->CompleteConfirmation(accepted);
+}
+
+std::string DesktopGameSession::SaveSession(const std::string &path) {
+  return life_->SaveSession(path);
+}
+
+std::string DesktopGameSession::RestoreSession(const std::string &path) {
+  return life_->RestoreSession(path);
 }

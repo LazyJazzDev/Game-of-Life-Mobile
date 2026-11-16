@@ -165,3 +165,14 @@ Do not combine these parameters with the older timed `LONGMARCH_SMOKE_*` hooks.
 For the save panel, set `LONGMARCH_CAPTURE_SAVE_NAME` to a localized display name
 so store captures do not include the default timestamp. Empty values retain the
 normal default name; the override is only used with `LONGMARCH_CAPTURE_PANEL=save`.
+
+### Canvas confirmation and recovery
+
+Reset and Randomize use a localized system alert before changing any cells.
+Cancel resumes the previous play/pause state without replacing the canvas.
+The app checkpoints the full sparse/compressed world in Application Support on
+resigning active, before iOS suspends GPU access. A fresh launch restores that
+world paused. The snapshot is separate from My Patterns and is replaced only
+after writing a complete temporary file. Screenshot capture sessions do not
+read or overwrite the user's checkpoint. Abrupt termination before a lifecycle
+notification can only recover the last successful checkpoint.

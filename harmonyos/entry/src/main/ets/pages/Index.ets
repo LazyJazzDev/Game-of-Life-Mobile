@@ -80,6 +80,7 @@ class NativeStatus {
   fps: number = 0;
   frames: number = 0;
   fileRequest: number = 0;
+  confirmationRequest: number = 0;
   fileRevision: number = 0;
   sizeAxis: number = 0;
   sizeValue: number = 64;
@@ -282,6 +283,8 @@ struct Index {
       const value = JSON.parse(native.status()) as NativeStatus;
       if (value.ready === undefined) return;
       this.stats = value;
+      if (value.confirmationRequest === 0) this.confirmationBusy = false;
+      else if (!this.confirmationBusy) this.confirmDestructiveAction(value.confirmationRequest);
       if (value.ready && !this.opened) this.open();
       if (value.sizeAxis !== this.sizeAxis) {
         this.sizeAxis = value.sizeAxis;
@@ -370,11 +373,32 @@ struct Index {
     this.alert(this.text('game_error'), error);
   }
 
+  private confirmationBusy: boolean = false;
+  private confirmDestructiveAction(action: number): void {
+    this.confirmationBusy = true;
+    let finished = false;
+    const complete = (accepted: boolean): void => {
+      if (finished) return;
+      finished = true;
+      this.send({ type: 'confirm', value: accepted });
+      // Keep the guard until native.status acknowledges the completed request.
+    };
+    this.getUIContext().showAlertDialog({
+      title: this.text(action === 1 ? 'reset_canvas_title' : 'randomize_canvas_title'),
+      message: this.text(action === 1 ? 'reset_canvas_message' : 'randomize_canvas_message'),
+      autoCancel: true,
+      cancel: () => complete(false),
+      primaryButton: { value: $r('app.string.cancel'), action: () => complete(false) },
+      secondaryButton: { value: this.text(action === 1 ? 'reset_canvas' : 'randomize_canvas'),
+        fontColor: DESTRUCTIVE, action: () => complete(true) }
+    });
+  }
+
   private open(): void {
     this.shownError = '';
     this.opened = true;
     this.button = -1; this.multi = false;
-    this.send({ type: 'open' });
+    this.send({ type: 'open', value: (AppStorage.get<string>('capturePattern') ?? '').length > 0 });
     this.updateSafeArea();
     this.send({ type: 'icons', angle: 0 });
   }
