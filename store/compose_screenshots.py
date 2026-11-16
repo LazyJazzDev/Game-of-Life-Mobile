@@ -95,28 +95,39 @@ for d in args or (list(dev) if plan else ['iphone','iphone-6.5','ipad']):
             filename=c['captures'][i-1] if 'captures' in c else f'{c.get("raw",d)}-{lang}-{i}-{name}.png'
             if plan: filename=f'{d}-{lang}-{name}.png'
             shot=Image.open(f'{RAW}/{filename}').convert('RGB')
-            sh=H-c['top']-c['bottom']; sw=round(shot.width*sh/shot.height)
-            if plan and sw > W * .90:
-                sw=round(W*.90); sh=round(shot.height*sw/shot.width)
-            shot=shot.resize((sw,sh),Image.LANCZOS)
-            x0=(W-sw)//2; y0=c['top']; r=c['r']
-            mask=Image.new('L',(sw,sh),0); ImageDraw.Draw(mask).rounded_rectangle((0,0,sw-1,sh-1),radius=r,fill=255)
-            shadow=Image.new('RGBA',(W,H),(0,0,0,0)); ImageDraw.Draw(shadow).rounded_rectangle((x0,y0+20,x0+sw,y0+sh+20),radius=r,fill=(0,0,0,140))
-            if d == 'iphone-duo-outer':
-                mask = duo_outer_mask(sw, sh)
-                shadow = Image.new('RGBA',(W,H),(0,0,0,0))
-                shadow.paste((0,0,0,140),(x0,y0+20,x0+sw,y0+sh+20),mask)
-            canvas=Image.alpha_composite(canvas,shadow.filter(ImageFilter.GaussianBlur(30)))
-            canvas.paste(shot,(x0,y0),mask)
+            shots = [shot]
+            companion = plan.get('companions', {}).get(d) if plan else None
+            if companion:
+                shots.append(Image.open(f'{RAW}/{companion}-{lang}-{name}.png').convert('RGB'))
+            gap = round(H*.025) if companion else 0
+            available = H-c['top']-c['bottom']-gap*(len(shots)-1)
+            scale = available/sum(image.height for image in shots)
+            if plan:
+                scale = min(scale, W*.90/max(image.width for image in shots))
+            y0 = c['top']
+            for shot in shots:
+                sw, sh = round(shot.width*scale), round(shot.height*scale)
+                shot=shot.resize((sw,sh),Image.LANCZOS)
+                x0=(W-sw)//2; r=c['r']
+                mask=Image.new('L',(sw,sh),0); ImageDraw.Draw(mask).rounded_rectangle((0,0,sw-1,sh-1),radius=r,fill=255)
+                shadow=Image.new('RGBA',(W,H),(0,0,0,0)); ImageDraw.Draw(shadow).rounded_rectangle((x0,y0+20,x0+sw,y0+sh+20),radius=r,fill=(0,0,0,140))
+                if d == 'iphone-duo-outer':
+                    mask = duo_outer_mask(sw, sh)
+                    shadow = Image.new('RGBA',(W,H),(0,0,0,0))
+                    shadow.paste((0,0,0,140),(x0,y0+20,x0+sw,y0+sh+20),mask)
+                canvas=Image.alpha_composite(canvas,shadow.filter(ImageFilter.GaussianBlur(30)))
+                canvas.paste(shot,(x0,y0),mask)
+                dr=ImageDraw.Draw(canvas)
+                if d == 'iphone-duo-outer':
+                    # Pad before erosion so the straight screen edges also receive a border.
+                    padded = Image.new('L',(sw+6,sh+6),0); padded.paste(mask,(3,3))
+                    inner = padded.filter(ImageFilter.MinFilter(7)).crop((3,3,sw+3,sh+3))
+                    border = ImageChops.subtract(mask,inner)
+                    canvas.paste((255,255,255,40),(x0,y0,x0+sw,y0+sh),border)
+                else:
+                    dr.rounded_rectangle((x0,y0,x0+sw-1,y0+sh-1),radius=r,outline=(255,255,255,40),width=3)
+                y0 += sh+gap
             dr=ImageDraw.Draw(canvas)
-            if d == 'iphone-duo-outer':
-                # Pad before erosion so the straight screen edges also receive a border.
-                padded = Image.new('L',(sw+6,sh+6),0); padded.paste(mask,(3,3))
-                inner = padded.filter(ImageFilter.MinFilter(7)).crop((3,3,sw+3,sh+3))
-                border = ImageChops.subtract(mask,inner)
-                canvas.paste((255,255,255,40),(x0,y0,x0+sw,y0+sh),border)
-            else:
-                dr.rounded_rectangle((x0,y0,x0+sw-1,y0+sh-1),radius=r,outline=(255,255,255,40),width=3)
             dr.text((W/2,c['ty']),title,font=fit(title,c['title'],1,W*0.9),fill=(240,244,250),anchor='mm')
             dr.text((W/2,c['sy']),sub,font=fit(sub,c['sub'],0,W*0.9),fill=(190,198,210),anchor='mm')
             canvas.convert('RGB').save(f'{OUT}/{d}/{lang}/{i}-{name}.png',optimize=True)
