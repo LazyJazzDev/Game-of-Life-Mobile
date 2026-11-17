@@ -18,3 +18,6 @@ through `LONGMARCH_RESEARCH_SELFTEST` in a clean simulator installation. It chec
 list subclasses with overridden indexing as well as captured stdout. Worker
 stdout/stderr and JavaScript console output are retained (last 16000 characters)
 even when the execution deadline is reached.
+Large helper results cross back into Python as JSON, avoiding intermittent
+JavaScriptCore/Pyodide deep-array conversion failures observed on simulator.
+The runtime regression also checks repeated 66000-cell RLE conversions.
