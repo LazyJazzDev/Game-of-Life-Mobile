@@ -82,3 +82,20 @@ Mate 70 / Maleoon 920 真机通过以下检查：
 5. 桌面 Golly HashLife 验证了 35328 代预热和两个宏观世代：横向三格 → 横向三格（预热）→ 纵向三格 → 横向三格。来源、许可证、详细数据见 `mobile/AgentTemplates/README.md` 和 `verification.json`。
 
 应用没有集成 HashLife，也未承诺大型元细胞实时演化。这轮完成的是应用内 Agent 构造、保存、批量放置和核验真实宏观生命游戏结构，并验证短程 GPU 演化；完整宏观周期仅由独立桌面程序验证，不能混称为手机或模拟器已推进 105984 代。
+
+## 自主研究工具与 6×6 OTCA 验证（2026-11-17）
+
+本节更新上面的 build 9 原型记录：当前 iOS Agent 不再提供内置 OTCA 模板、`metacell_guide` 或专用构造器。应用提供公共文本获取、研究文档工作区、隔离 JavaScript/Python 执行、通用 B3/S23 HashLife 与 RLE 编解码。Agent 自行查阅公开源码并编写所需适配器。HashLife 用于研究实验，画布实时演化仍走原生 GPU 路径。研究工具尚未同步验证 HarmonyOS。
+
+研究执行支持 stdout/错误诊断、模板保存结果、流式回复及工具活动/耗时显示。Python 桥接将坐标复制为普通列表、通过 JSON 返回大结果，并用闭包隔离内置函数，避免用户程序同名函数破坏桥接。当前 iOS 为 1.0.3 build 24。
+
+### 从出厂状态运行的证据
+
+独立测试 run20 使用 build 20、默认 DeepSeek V4 Pro/high，从卸载重装后的空模板库开始；只输入原始 6×6 OTCA 任务，没有注入参考图案、构造步骤或此前测试的工作区。后续 build 21–24 的重试、实验配置与桥接修复分别验证，不能把 run20 写成 build 24 的完整端到端测试。
+
+- Agent 自行编写源码适配器，保存 `otca_on`（66211 活格）和 `otca_off`（23928 活格）。独立读取实际保存文件，与参考结构逐格比较，均无差异。
+- Agent 组合 `otca_6x6_glider`：12298 × 12298，1072443 个活格；一次放入原生画布后，区域 `canvas_summary` 与模板指纹均为 `10639125039446826425`。
+- 独立 Golly HashLife 直接读取 Agent 保存的完整阵列，核验 35328 代预热，以及至 211968 代的五次宏观 B3/S23 转移，全部吻合。此验证使用中央区域读出状态，与 Agent 的整块密度读出方式独立。
+- Agent 已调用暂停和 `canvas_fit`。完整运行仍在继续进行补充检查；上述证据不等于最终对话已结束，也不代表原生 GPU 已推进 211968 代。
+
+本地证据位于 `out/agent/research-run20/`：`saved-template-comparison.json`、`independent-array-verification.json`、实际保存的三个 RLE、独立核验脚本及界面截图。证据未打包进应用，不能作为以后测试的预置资料。通用 HashLife 另通过 480 项独立稀疏 CPU 对照，RLE 通过 100 项往返测试；build 24 的实际模拟器回归覆盖同名函数覆盖和自定义列表子类转换。
