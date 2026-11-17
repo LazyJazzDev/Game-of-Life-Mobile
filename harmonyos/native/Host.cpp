@@ -9,8 +9,8 @@
 #include <fstream>
 #include <future>
 
-#include "grassland/graphics/sha256.h"
-#include "grassland/graphics/shader_cache.h"
+#include "grassland/rhi/sha256.h"
+#include "grassland/rhi/shader_cache.h"
 
 namespace longmarch::harmony {
 namespace {
@@ -48,7 +48,7 @@ std::string Raw(NativeResourceManager *manager, const std::string &name) {
 }
 
 std::string Digest(const std::string &data) {
-  grassland::graphics::detail::SHA256 hash;
+  grassland::rhi::detail::SHA256 hash;
   hash.Update(data);
   return hash.Finish();
 }
@@ -96,6 +96,7 @@ void Host::Extract(NativeResourceManager *manager, const std::string &directory)
   document.Parse(manifest.c_str());
   if (document.HasParseError() || !document.IsObject() || !document.HasMember("files") || !document["files"].IsArray())
     throw std::runtime_error("Invalid resource manifest");
+  session_path_ = std::filesystem::path(directory) / "LastCanvas.gol";
   auto root = std::filesystem::path(directory) / ("resources-" + Digest(manifest).substr(0, 20));
   if (!std::filesystem::exists(root / ".complete")) {
     for (auto &entry : document["files"].GetArray()) {
@@ -157,7 +158,31 @@ void Host::Detach() {
   wait.get();
 }
 
+void Host::Checkpoint() {
+  if (!game_ || transient_session_ || session_path_.empty())
+    return;
+  const auto error = game_->SaveSession(session_path_.string());
+  if (!error.empty())
+    fprintf(stderr, "Canvas checkpoint: %s\n", error.c_str());
+}
+
+void Host::Background() {
+  auto done = std::make_shared<std::promise<void>>();
+  auto wait = done->get_future();
+  Post([this, done] {
+    try {
+      Execute("{\"type\":\"active\",\"value\":false}");
+      Checkpoint();
+    } catch (const std::exception &error) {
+      fprintf(stderr, "Canvas checkpoint: %s\n", error.what());
+    }
+    done->set_value();
+  });
+  wait.get();
+}
+
 void Host::Stop() {
+  Checkpoint();
   surface_.reset();
   game_.reset();
   dirty_ = false;
@@ -171,6 +196,8 @@ void Host::Resize() {
   if (game_ && width_ && height_) {
     game_->Resize(width_, height_);
     game_->SetBottomControlInset(bottom_inset_);
+    game_->SetControlPixelSize(control_pixel_size_);
+    game_->SetCutoutInsets(cutout_insets_.x, cutout_insets_.y, cutout_insets_.z);
   }
 }
 
@@ -197,14 +224,28 @@ void Host::Execute(const std::string &json) {
     if (!ready_)
       throw std::runtime_error("Resources are still being prepared");
     // The app only reads the SPIR-V prepared offline (prepare_resources.py).
-    grassland::graphics::ConfigureShaderCache({resources_ / "shaders", true, false});
-    game_ = std::make_unique<DesktopGameSession>(grassland::graphics::BACKEND_API_VULKAN);
+    grassland::rhi::ConfigureShaderCache({resources_ / "shaders", true, false});
+    game_ = std::make_unique<DesktopGameSession>(grassland::rhi::BACKEND_API_VULKAN);
     game_->EnableNativeSizeControls();
+    transient_session_ = Boolean(c, "value");
+    if (!transient_session_) {
+      const auto error = game_->RestoreSession(session_path_.string());
+      if (!error.empty())
+        fprintf(stderr, "Canvas restore: %s\n", error.c_str());
+    }
     Resize();
+    dirty_ = true;
+  } else if (type == "confirm" && game_) {
+    game_->CompleteConfirmation(Boolean(c, "value"));
     dirty_ = true;
   } else if (type == "size" && game_) {
     size_value_ = int(std::clamp(Number(c, "value", 64), 2.0, 256.0));
     game_->SetGridDimension(int(Number(c, "axis")), size_value_);
+    dirty_ = true;
+  } else if (type == "layout") {
+    control_pixel_size_ = float(std::clamp(Number(c, "value"), 0.0, 512.0));
+    cutout_insets_ = glm::clamp(glm::vec3{Number(c, "x"), Number(c, "y"), Number(c, "right")}, 0.0f, 0.25f);
+    Resize();
     dirty_ = true;
   } else if (type == "bottomInset") {
     bottom_inset_ = float(std::clamp(Number(c, "value"), 0.0, 0.25));
@@ -212,11 +253,17 @@ void Host::Execute(const std::string &json) {
     dirty_ = true;
   } else if (type == "dismissSize") {
     size_axis_ = 0;
+  } else if (type == "requestFile" && game_) {
+    // Use the normal shortcut path so native pickers and file state stay in sync.
+    const int key = int(Number(c, "value")) == 2 ? GLFW_KEY_S : GLFW_KEY_O;
+    game_->PrepareInput(delay_ < 0);
+    game_->Window()->SendKey(key, GLFW_PRESS, GLFW_MOD_CONTROL);
+    game_->Window()->SendKey(key, GLFW_RELEASE, GLFW_MOD_CONTROL);
+    dirty_ = true;
   } else if (type == "file" && game_) {
     file_revision_ = int(Number(c, "request"));
-    auto error = game_->CompleteFile(Text(c, "path"));
-    if (!error.empty())
-      throw std::runtime_error(error);
+    // User file errors must not stop the rendering loop.
+    file_error_ = game_->CompleteFile(Text(c, "path"));
     dirty_ = true;
   } else if (type == "icons" && game_) {
     game_->SetIconOrientation(Number(c, "angle"));
@@ -242,17 +289,23 @@ void Host::Execute(const std::string &json) {
         game->ResetClock();
     }
     if (kind == 6)
-      window->MagnifyEvent().InvokeCallbacks(grassland::graphics::MagnifyGesture{
-          std::clamp(Number(c, "value", 1), .1, 10.0), x, y, grassland::graphics::MagnifyPhase::kUpdate});
+      window->MagnifyEvent().InvokeCallbacks(grassland::rhi::MagnifyGesture{
+          std::clamp(Number(c, "value", 1), .1, 10.0), x, y, grassland::rhi::MagnifyPhase::kUpdate});
     dirty_ = true;
   }
 }
 
 void Host::Frame() {
   auto start = std::chrono::steady_clock::now();
+  const bool scheduled = !dirty_ && delay_ >= 0;
   if (!surface_)
-    surface_ = std::make_unique<Surface>(game_->Core(), window_);
-  surface_->Resize(width_, height_);
+    surface_ = Surface::Create(game_->Device(), window_, error_);
+  if (!surface_)
+    return;
+  if (!surface_->Resize(width_, height_)) {
+    error_ = surface_->Error();
+    return;
+  }
   game_->Render();
   auto size = game_->TakeSizeControlRequest();
   if (size.x) {
@@ -260,6 +313,10 @@ void Host::Frame() {
     size_value_ = size.y;
   }
   const bool presented = surface_->Present(game_->Image());
+  if (!surface_->Error().empty()) {
+    error_ = surface_->Error();
+    return;
+  }
   const auto presented_at = std::chrono::steady_clock::now();
   if (presented) {
     const double interval =
@@ -277,8 +334,14 @@ void Host::Frame() {
   // A replaced swapchain needs another presentation even when the game is idle.
   if (!presented)
     delay_ = 1.0 / 60;
-  deadline_ = start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                          std::chrono::duration<double>(std::max(1.0 / 60, delay_)));
+  const auto period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+      std::chrono::duration<double>(std::max(1.0 / 60, delay_)));
+  // Keep scheduled frames on an absolute cadence: wait_until may wake late,
+  // and restarting the clock at each wake accumulates that delay every frame.
+  // Input-driven frames and long stalls start a fresh cadence, without bursts.
+  deadline_ = (scheduled ? deadline_ : start) + period;
+  if (deadline_ <= start)
+    deadline_ = start + period;
 }
 
 void Host::Publish() {
@@ -296,14 +359,16 @@ void Host::Publish() {
   w.Key("ready");
   w.Bool(ready_);
   text("error", error_);
+  text("fileError", file_error_);
   text("resources", resources_.string());
   number("fps", fps_);
   number("frames", frames_);
+  number("confirmationRequest", game_ ? game_->ConfirmationRequest() : 0);
   number("fileRequest", game_ ? game_->FileRequest() : 0);
   number("fileRevision", file_revision_);
   number("sizeAxis", size_axis_);
   number("sizeValue", size_value_);
-  text("device", game_ ? game_->Core()->DeviceName() : "");
+  text("device", game_ ? game_->Device()->Name() : "");
   w.EndObject();
   std::lock_guard<std::mutex> lock(status_mutex_);
   status_ = buffer.GetString();

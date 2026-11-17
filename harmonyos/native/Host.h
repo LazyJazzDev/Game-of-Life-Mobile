@@ -20,6 +20,7 @@ class Host {
   static Host &Get();
   void Initialize(NativeResourceManager *manager, std::string files_dir);
   void Command(std::string json);
+  void Background();
   void Attach(OHNativeWindow *window, uint32_t width, uint32_t height);
   void Detach();
   std::string Status();
@@ -33,6 +34,7 @@ class Host {
   void Frame();
   void Publish();
   void Stop();
+  void Checkpoint();
   void Resize();
   void Extract(NativeResourceManager *manager, const std::string &files_dir);
 
@@ -46,13 +48,16 @@ class Host {
   std::unique_ptr<Surface> surface_;
   OHNativeWindow *window_ = nullptr;
   uint32_t width_ = 0, height_ = 0;
-  std::filesystem::path resources_;
-  std::string error_;
+  std::filesystem::path resources_, session_path_;
+  bool transient_session_ = false;
+  std::string error_, file_error_;
   bool ready_ = false, active_ = true, dirty_ = false;
   int size_axis_ = 0, size_value_ = 64, file_revision_ = 0;
   uint64_t frames_ = 0;
   // Fraction of the surface height kept clear of the system gesture area, as on iOS.
   float bottom_inset_ = 0;
+  float control_pixel_size_ = 0;
+  glm::vec3 cutout_insets_{0.0f};
   double fps_ = 0;
   double delay_ = 0;
   std::chrono::steady_clock::time_point deadline_{}, last_present_{};

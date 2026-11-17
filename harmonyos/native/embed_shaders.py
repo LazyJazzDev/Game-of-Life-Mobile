@@ -12,5 +12,5 @@ for path in sorted(root.rglob('*')):
     name = json.dumps(path.relative_to(root).as_posix())
     content = json.dumps(path.read_text(), ensure_ascii=True)
     lines.append(f'  vfs.WriteFile({name}, std::string({content}));')
-lines.extend(['  return vfs;', '}'])
+lines.extend(['  return vfs;', '}', 'std::string GetShaderCode(const std::string &name) { auto vfs=GetShaderVirtualFileSystem(); std::vector<uint8_t> data; if(vfs.ReadFile(name,data)) return {}; return {data.begin(),data.end()}; }'])
 output.write_text('\n'.join(lines) + '\n')

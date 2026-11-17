@@ -55,6 +55,11 @@ napi_value Command(napi_env env, napi_callback_info info) {
   return Undefined(env);
 }
 
+napi_value Background(napi_env env, napi_callback_info) {
+  Host::Get().Background();
+  return Undefined(env);
+}
+
 napi_value Status(napi_env env, napi_callback_info) {
   auto text = Host::Get().Status();
   napi_value result;
@@ -81,8 +86,9 @@ napi_value Register(napi_env env, napi_value exports) {
   napi_property_descriptor properties[] = {
       {"initialize", nullptr, Initialize, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"command", nullptr, Command, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"background", nullptr, Background, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"status", nullptr, Status, nullptr, nullptr, nullptr, napi_default, nullptr}};
-  napi_define_properties(env, exports, 3, properties);
+  napi_define_properties(env, exports, 4, properties);
   napi_value value;
   bool has = false;
   napi_has_named_property(env, exports, OH_NATIVE_XCOMPONENT_OBJ, &has);

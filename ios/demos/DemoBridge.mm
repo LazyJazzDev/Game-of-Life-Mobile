@@ -8,14 +8,17 @@
 #include <GLFW/glfw3.h>
 #include "DemoSession.h"
 #include "RenderQueue.h"
-#include "grassland/graphics/backend/metal/metal_core.h"
-#include "grassland/graphics/backend/metal/metal_image.h"
+#include "grassland/rhi/backend/metal/metal_device.h"
+#include "grassland/rhi/backend/metal/metal_image.h"
+#include "grassland/rhi/backend/metal/metal_queue.h"
 
 @implementation DemoRenderer {
   MTKView *_view;
   DemoProgress _progress;
   std::atomic<uint64_t> _generation;
-  BOOL _active, _busy, _failed, _filePending;
+  BOOL _active, _busy, _failed, _filePending, _confirmationPending;
+  std::string _sessionPath;
+  id _resignObserver;
   CFTimeInterval _statsTime;
   NSInteger _statsFrames;
   // Owned and used only on LongMarchRenderQueue.
@@ -48,6 +51,16 @@
   ++_wakeRevision;
   _failed = NO;
   _filePending = NO;
+  _confirmationPending = NO;
+  if (!_resignObserver) {
+    __weak DemoRenderer *weakSelf = self;
+    _resignObserver = [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification
+                                                                      object:nil
+                                                                       queue:NSOperationQueue.mainQueue
+                                                                  usingBlock:^(NSNotification *) {
+                                                                    [weakSelf setActive:NO];
+                                                                  }];
+  }
   _statsTime = 0;
   _statsFrames = 0;
   view.device = MTLCreateSystemDefaultDevice();
@@ -68,8 +81,28 @@
       try {
         self->_session = std::make_unique<DemoSession>(resources.fileSystemRepresentation);
         self->_session->Game()->EnableNativeSizeControls();
-        auto core = static_cast<grassland::graphics::backend::MetalCore *>(self->_session->Core());
-        id<MTLDevice> device = (__bridge id<MTLDevice>)core->Device();
+        self->_sessionPath.clear();
+        NSDictionary *environment = NSProcessInfo.processInfo.environment;
+        if (!environment[@"LONGMARCH_CAPTURE_PATTERN"] && !environment[@"LONGMARCH_SMOKE_GOL_SIZE"]) {
+          NSError *storageError = nil;
+          NSURL *directory = [NSFileManager.defaultManager URLForDirectory:NSApplicationSupportDirectory
+                                                                  inDomain:NSUserDomainMask
+                                                         appropriateForURL:nil
+                                                                    create:YES
+                                                                     error:&storageError];
+          if (directory) {
+            [directory setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
+            self->_sessionPath = [[directory URLByAppendingPathComponent:@"LastCanvas.gol"] fileSystemRepresentation];
+            const auto restoreError = self->_session->Game()->RestoreSession(self->_sessionPath);
+            if (!restoreError.empty())
+              NSLog(@"Canvas restore: %s", restoreError.c_str());
+          } else {
+            NSLog(@"Canvas storage: %@", storageError);
+          }
+        }
+        auto core =
+            grassland::rhi::QueryInterfacePtr<grassland::rhi::backend::metal::IMetalDevice>(self->_session->Device());
+        id<MTLDevice> device = (__bridge id<MTLDevice>)core->NativeDevice();
         NSString *source =
             @"#include <metal_stdlib>\nusing namespace metal;\n"
              "struct V{float4 p [[position]];float2 uv;};\n"
@@ -163,6 +196,29 @@
   });
 }
 
+- (void)setGameControlOcclusions:(NSArray<NSValue *> *)regions {
+  std::vector<glm::vec4> rects;
+  for (NSValue *value in regions) {
+    CGRect r = value.CGRectValue;
+    rects.emplace_back(r.origin.x, r.origin.y, r.size.width, r.size.height);
+  }
+  const uint64_t generation = _generation;
+  [self wakeGame];
+  dispatch_async(LongMarchRenderQueue(), ^{
+    if (self->_generation == generation && self->_session && self->_session->Game())
+      self->_session->Game()->SetControlOcclusions(rects);
+  });
+}
+
+- (void)setGameControlPixelSize:(float)pixels {
+  const uint64_t generation = _generation;
+  [self wakeGame];
+  dispatch_async(LongMarchRenderQueue(), ^{
+    if (self->_generation == generation && self->_session && self->_session->Game())
+      self->_session->Game()->SetControlPixelSize(pixels);
+  });
+}
+
 - (void)setGameIconRotation:(float)radians {
   const uint64_t generation = _generation;
   [self wakeGame];
@@ -203,8 +259,21 @@
         self->_session->Game()->ResetClock();
     }
     if (kind == 6)
-      window->MagnifyEvent().InvokeCallbacks(grassland::graphics::MagnifyGesture{
-          value, x * size.x, y * size.y, grassland::graphics::MagnifyPhase::kUpdate});
+      window->MagnifyEvent().InvokeCallbacks(
+          grassland::rhi::MagnifyGesture{value, x * size.x, y * size.y, grassland::rhi::MagnifyPhase::kUpdate});
+  });
+}
+
+- (void)requestFileAction:(NSInteger)action {
+  const uint64_t generation = _generation;
+  [self wakeGame];
+  dispatch_async(LongMarchRenderQueue(), ^{
+    if (self->_generation != generation || !self->_session || !self->_session->Game())
+      return;
+    auto *window = self->_session->Game()->Window();
+    const int key = action == 2 ? GLFW_KEY_S : GLFW_KEY_O;
+    window->SendKey(key, GLFW_PRESS, GLFW_MOD_CONTROL);
+    window->SendKey(key, GLFW_RELEASE, GLFW_MOD_CONTROL);
   });
 }
 
@@ -223,6 +292,29 @@
   });
 }
 
+- (void)completeConfirmation:(BOOL)accepted {
+  const uint64_t generation = _generation;
+  dispatch_async(LongMarchRenderQueue(), ^{
+    if (self->_generation == generation && self->_session)
+      self->_session->Game()->CompleteConfirmation(accepted);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      self->_confirmationPending = NO;
+      [self wakeGame];
+    });
+  });
+}
+
+- (void)checkpointCanvas {
+  // Finish GPU readback before iOS enters the background and forbids GPU work.
+  dispatch_sync(LongMarchRenderQueue(), ^{
+    if (self->_session && !self->_sessionPath.empty()) {
+      const auto error = self->_session->Game()->SaveSession(self->_sessionPath);
+      if (!error.empty())
+        NSLog(@"Canvas checkpoint: %s", error.c_str());
+    }
+  });
+}
+
 - (void)setActive:(BOOL)active {
   if (_active == active)
     return;
@@ -230,6 +322,8 @@
     [self input:5 x:0 y:0 value:active];
   if (_active != active)
     _statsTime = 0;
+  if (!active)
+    [self checkpointCanvas];
   _active = active;
   _view.paused = YES;
   [self wakeGame];
@@ -274,11 +368,17 @@
             auto game = self->_session->Game();
             nextFrameDelay = game->NextFrameDelay();
             int action = game->FileRequest();
+            int confirmation = game->ConfirmationRequest();
             const auto sizeRequest = game->TakeSizeControlRequest();
             const auto sizeBounds = sizeRequest.x ? game->SizeControlBounds(sizeRequest.x) : glm::vec4{0.0f};
             const CGRect sizeRect =
                 CGRectMake(sizeBounds.x, sizeBounds.y, sizeBounds.z - sizeBounds.x, sizeBounds.w - sizeBounds.y);
             dispatch_async(dispatch_get_main_queue(), ^{
+              if (self->_generation == generation && confirmation && !self->_confirmationPending &&
+                  self.confirmationRequest) {
+                self->_confirmationPending = YES;
+                self.confirmationRequest(confirmation);
+              }
               if (self->_generation == generation && action && !self->_filePending && self.fileRequest) {
                 self->_filePending = YES;
                 self.fileRequest(action);
@@ -287,9 +387,12 @@
                 self.sizeRequest(sizeRequest.x, sizeRequest.y, sizeRect);
             });
           }
-          auto core = static_cast<grassland::graphics::backend::MetalCore *>(self->_session->Core());
-          auto image = static_cast<grassland::graphics::backend::MetalImage *>(self->_session->Image());
-          id<MTLCommandQueue> queue = (__bridge id<MTLCommandQueue>)core->Queue();
+          auto core =
+              grassland::rhi::QueryInterfacePtr<grassland::rhi::backend::metal::IMetalDevice>(self->_session->Device());
+          auto image =
+              grassland::rhi::QueryInterfacePtr<grassland::rhi::backend::metal::IMetalImage>(self->_session->Image());
+          id<MTLCommandQueue> queue =
+              (__bridge id<MTLCommandQueue>)core->GetNativeQueue(grassland::rhi::QUEUE_TYPE_MAIN)->NativeQueue();
           id<MTLCommandBuffer> command = [queue commandBuffer];
           MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
           pass.colorAttachments[0].texture = drawable.texture;
@@ -302,7 +405,7 @@
               setViewport:MTLViewport{(drawable.texture.width - width * fit) / 2,
                                       (drawable.texture.height - height * fit) / 2, width * fit, height * fit, 0, 1}];
           [encoder setRenderPipelineState:self->_presentPipeline];
-          [encoder setFragmentTexture:(__bridge id<MTLTexture>)image->Handle() atIndex:0];
+          [encoder setFragmentTexture:(__bridge id<MTLTexture>)image->NativeImage() atIndex:0];
           [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
           [encoder endEncoding];
           [command presentDrawable:drawable];
@@ -373,7 +476,7 @@
                   atomically:YES];
             }
           }
-          deviceName = [NSString stringWithUTF8String:core->DeviceName().c_str()];
+          deviceName = [NSString stringWithUTF8String:self->_session->Device()->Name().c_str()];
           if ((frames == 3 || !std::isfinite(nextFrameDelay)) &&
               NSProcessInfo.processInfo.environment[@"LONGMARCH_SMOKE_DEMO"]) {
             NSDictionary *result = @{
@@ -450,6 +553,12 @@
 }
 
 - (void)stop {
+  if (_active)
+    [self checkpointCanvas];
+  if (_resignObserver) {
+    [NSNotificationCenter.defaultCenter removeObserver:_resignObserver];
+    _resignObserver = nil;
+  }
   ++_generation;
   ++_wakeRevision;
   _active = NO;

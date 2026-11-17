@@ -3,15 +3,14 @@
 #include <memory>
 
 #include "games/DesktopGameSession.h"
-#include "grassland/graphics/graphics.h"
+#include "grassland/rhi/rhi.h"
 
-// Configures the prepared shader bundle and hosts the Game of Life. LongMarch's
-// DemoSession also runs the graphics and N-body demos; this app has only the game.
+// Configures the prepared RHI shader bundle and hosts the Game of Life.
 class DemoSession {
  public:
   DemoSession(const std::filesystem::path &resources,
               bool prepare = false,
-              grassland::graphics::BackendAPI backend = grassland::graphics::BACKEND_API_DEFAULT);
+              grassland::rhi::BackendAPI backend = grassland::rhi::BACKEND_API_DEFAULT);
   ~DemoSession();
 
   void Resize(int width, int height) {
@@ -22,11 +21,11 @@ class DemoSession {
     game_->Render();
   }
 
-  grassland::graphics::Core *Core() const {
-    return game_->Core();
+  grassland::rhi::IDevice *Device() const {
+    return game_->Device();
   }
 
-  grassland::graphics::Image *Image() const {
+  grassland::rhi::IImage *Image() const {
     return game_->Image();
   }
 

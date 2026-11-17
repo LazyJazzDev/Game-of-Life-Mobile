@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <iostream>
 
 #include "DemoSession.h"
+#include "demo/gol/gpu/tiled_life.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
@@ -16,21 +18,23 @@ int main(int argc, char **argv) {
     std::filesystem::create_directories(argv[2]);
     DemoSession session(argv[1], argc > 3 && std::string(argv[3]) == "prepare");
     session.Render();
-    auto extent = session.Image()->Extent();
-    std::vector<float> pixels(extent.width * extent.height * 4);
-    if (session.Image()->Format() == grassland::graphics::IMAGE_FORMAT_R8G8B8A8_UNORM) {
-      std::vector<uint8_t> rgba(pixels.size());
-      session.Image()->DownloadData(rgba.data());
-      for (size_t i = 0; i < rgba.size(); ++i)
-        pixels[i] = rgba[i] / 255.f;
-    } else
-      session.Image()->DownloadData(pixels.data());
-    std::vector<uint8_t> bytes(pixels.size());
-    for (size_t i = 0; i < pixels.size(); ++i) {
-      if (!std::isfinite(pixels[i]))
-        throw std::runtime_error("Nonfinite pixel");
-      bytes[i] = uint8_t(std::clamp(pixels[i], 0.f, 1.f) * 255.f + .5f);
+    // Prepare/replay the portable sparse path as well as the detected fast path.
+    // HarmonyOS consumes this same offline bundle on devices without subgroup vote.
+    if (argc > 4) {
+      std::ifstream input(argv[4]);
+      const std::string source{std::istreambuf_iterator<char>(input), {}};
+      life_demo::TiledLife portable;
+      if (source.empty() || !portable.Initialize(session.Device(), source, 64, 64,
+                                                 life_demo::TiledLife::UpdateMethod::BitPlanes, true, false))
+        throw std::runtime_error("Cannot prepare portable tiled shaders");
     }
+    auto extent = session.Image()->GetDesc();
+    std::vector<uint8_t> bytes(size_t(extent.width) * extent.height * 4);
+    grassland::rhi::ObjPtr<grassland::rhi::ICommandContext> commands = session.Game()->Queue()->CreateCommandContext();
+    grassland::rhi::ObjPtr<grassland::rhi::IDownloadToken> download = commands->CmdDownloadImage(session.Image());
+    grassland::rhi::ObjPtr<grassland::rhi::ISubmissionToken> submit = commands->Submit();
+    if (!submit || !submit->WaitHost() || !download || !download->CopyTo(bytes.data(), bytes.size()))
+      throw std::runtime_error("Image readback failed");
     auto output = std::filesystem::path(argv[2]) / "gol.png";
     if (!stbi_write_png(output.c_str(), extent.width, extent.height, 4, bytes.data(), extent.width * 4))
       throw std::runtime_error("Cannot save image");

@@ -1,11 +1,11 @@
 # Game of Life for iOS and iPadOS
 
 The SwiftUI app hosts the desktop Game of Life UI from the LongMarch submodule
-(`LongMarch/demo/gol`) in a Metal view, on the LongMarch graphics core and its
-Metal backend. Bundle `net.lazyjazz.gameoflife`, version 1.0.1 (build 2), iOS 18+,
+(`LongMarch/demo/gol`) in a Metal view, on the LongMarch RHI and its
+Metal backend. Bundle `net.lazyjazz.gameoflife`, version 1.0.2 (build 5), iOS 18+,
 iPhone and iPad.
 
-- iPhone locks the interface to the orientation the game opened in; gravity turns
+- Conventional iPhone locks the interface to the orientation the game opened in; gravity turns
   only the button icons. iPad rotates freely and the controls follow the window's
   short edges.
 - Notch and Dynamic Island safe areas, the home-indicator strip and an iPad size
@@ -15,6 +15,31 @@ iPhone and iPad.
   built-in Life Lexicon patterns, the user's saved patterns, and the system files.
 - Frames are rendered only on demand: while the game is paused and idle, nothing is
   scheduled.
+
+Foldable iPhones (including Duo) use UIKit's `UIHingeInteraction` capability
+on iOS 27.1 and later, follow system orientation, and retain the same game
+session when the scene migrates between inner and outer displays. Layout follows
+the current viewport aspect ratio; controls stay at 40 points, matching Harmony's
+40 vp policy, with the current screen scale applied to Metal pixels. Resizing or
+switching screens cancels in-flight drawing and two-finger pan gestures.
+The tiled canvas uses a fixed 360-point reference width for its base cell pitch
+(360 × 0.95 / 64 points), multiplied by the user's zoom and current screen scale.
+Unfolding changes the visible range instead of magnifying cells; density changes
+also rescale the pixel-based pan offset to retain the viewed cell.
+Duo supports all four system orientations. UIKit's active occlusion regions
+(including their interaction margins) move only intersecting buttons along their
+rail; a corner camera does not shift the whole toolbar or reduce the board.
+The cover's portrait randomize action therefore moves left of the camera; in
+landscape the affected sidebar action moves vertically. The home gesture strip
+remains reserved, and the normal 20-point edge spacing is shared across displays.
+Device Hub exposes Closed, Partially Open, Open and Rotate Right controls for
+checking the physical mask as well as the framebuffer.
+
+For simulator regression, launch with `LONGMARCH_SMOKE_LAYOUT=1`, rotate and
+switch displays, then inspect `Documents/LayoutSmoke.json` for viewport, density
+and renderer continuity. `LONGMARCH_SMOKE_ORIENTATION=right` tests programmatic
+rotation separately; some Duo windowing modes reject programmatic orientation
+requests even though system-driven rotation works.
 
 ## Layout
 
@@ -118,4 +143,36 @@ drive the app without touch input. Results are written to the app's Documents.
 | `LONGMARCH_SMOKE_FILE=open\|save`, `LONGMARCH_SMOKE_FOLDER=<category>` | Opens the pattern library, optionally in a category such as `gun` |
 | `LONGMARCH_SMOKE_SIZE_PICKER=width\|height` | Taps a portrait size readout to open its popover |
 | `LONGMARCH_SMOKE_TAPS="x,y;x,y"` | Taps points (fractions of the view) one second apart |
+| `LONGMARCH_SMOKE_FILE_DELAY=<seconds>` | Delays opening the library so a pattern can be loaded first; defaults to one second |
+| `LONGMARCH_SMOKE_ZOOM=<scale>` | Simulator-only: sends a centered pinch after three seconds for repeatable screenshot framing |
 | `LONGMARCH_SMOKE_PATTERN=<name>` | The open button loads that built-in pattern, such as `Gosper glider gun` |
+
+The iOS shader bundle uses Tier 1 argument buffers so it also runs in the iOS
+simulator. The native Metal command queue presents the RHI image after rendering
+on the same queue. Shader preparation includes preprocessed source, SPIR-V and MSL;
+regenerate `GameResources` whenever the LongMarch shaders or pipeline layouts change.
+
+### Deterministic store capture
+
+Set `LONGMARCH_CAPTURE_PATTERN` to an exact built-in library name (for example
+`pulsar`), `LONGMARCH_CAPTURE_ZOOM` to a positive pinch multiplier (up to 10),
+and optionally `LONGMARCH_CAPTURE_PANEL=library` or `save`. The host waits for
+its first rendered frame, imports through the normal file workflow, then adjusts
+the camera and opens the requested panel. The board stays paused. No coordinate
+taps or fixed startup delays are required. With simctl, prefix these environment
+variables with `SIMCTL_CHILD_`; select the locale with `-AppleLanguages`.
+Do not combine these parameters with the older timed `LONGMARCH_SMOKE_*` hooks.
+For the save panel, set `LONGMARCH_CAPTURE_SAVE_NAME` to a localized display name
+so store captures do not include the default timestamp. Empty values retain the
+normal default name; the override is only used with `LONGMARCH_CAPTURE_PANEL=save`.
+
+### Canvas confirmation and recovery
+
+Reset and Randomize use a localized system alert before changing any cells.
+Cancel resumes the previous play/pause state without replacing the canvas.
+The app checkpoints the full sparse/compressed world in Application Support on
+resigning active, before iOS suspends GPU access. A fresh launch restores that
+world paused. The snapshot is separate from My Patterns and is replaced only
+after writing a complete temporary file. Screenshot capture sessions do not
+read or overwrite the user's checkpoint. Abrupt termination before a lifecycle
+notification can only recover the last successful checkpoint.

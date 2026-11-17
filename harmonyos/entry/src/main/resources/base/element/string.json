@@ -131,6 +131,66 @@
     {
       "name": "ok",
       "value": "OK"
+    },
+    {
+      "name": "privacy_title",
+      "value": "Privacy policy"
+    },
+    {
+      "name": "privacy_unavailable",
+      "value": "Privacy information is unavailable. Please check that AppGallery is available and try again."
+    },
+    {
+      "name": "privacy_exit",
+      "value": "Exit"
+    },
+    {
+      "name": "privacy_exit_failed",
+      "value": "Unable to exit. Please close the app."
+    },
+    {
+      "name": "privacy_revoke",
+      "value": "Withdraw consent"
+    },
+    {
+      "name": "privacy_revoke_message",
+      "value": "The app will close and ask for your consent next time. Saved patterns will not be deleted."
+    },
+    {
+      "name": "invalid_pattern_file",
+      "value": "This is not a valid saved pattern file. Choose a valid .cells file. Your current simulation has been preserved."
+    },
+    {
+      "name": "file_operation_failed",
+      "value": "Unable to open or save the file. Check the file and access permissions, then try again."
+    },
+    {
+      "name": "privacy_retry",
+      "value": "Retry"
+    },
+    {
+      "name": "reset_canvas_title",
+      "value": "Reset canvas?"
+    },
+    {
+      "name": "randomize_canvas_title",
+      "value": "Randomize canvas?"
+    },
+    {
+      "name": "reset_canvas_message",
+      "value": "This will clear all cells on the canvas."
+    },
+    {
+      "name": "randomize_canvas_message",
+      "value": "This will replace all cells with a new random pattern."
+    },
+    {
+      "name": "reset_canvas",
+      "value": "Reset"
+    },
+    {
+      "name": "randomize_canvas",
+      "value": "Randomize"
     }
   ]
 }

@@ -21,14 +21,14 @@ def stage(source: Path, output: Path):
         raise ValueError('Output exists; remove it or choose a fresh output directory')
     if not (source / 'Patterns' / 'library.json').is_file():
         raise ValueError('No Patterns/library.json in the source')
-    shaders = sorted((source / 'shaders').glob('slang-*'))
+    shaders = sorted(p for p in (source / 'shaders').iterdir() if p.name.startswith(('slang-', 'pre-', 'threads-slang-')))
     if not shaders:
         raise ValueError('No SPIR-V shaders; prepare the game resources first')
     for shader in shaders:
         data = shader.read_bytes()
         payload = data[64:]
         digest = hashlib.sha256(str(len(payload)).encode() + b':' + payload).hexdigest().encode()
-        if data[:64] != digest or payload[:4] != b'\x03\x02\x23\x07':
+        if data[:64] != digest or (shader.name.startswith('slang-') and payload[:4] != b'\x03\x02\x23\x07'):
             raise ValueError(f'Invalid SPIR-V cache: {shader.name}')
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=output.parent, prefix='harmony-bundle-') as temp:

@@ -28,7 +28,8 @@ args.output.parent.mkdir(parents=True, exist_ok=True)
 
 
 def run(checker: Path, resources: Path, output: Path, *extra: str) -> subprocess.CompletedProcess:
-    return subprocess.run([str(checker.resolve()), str(resources), str(output), *extra],
+    return subprocess.run([str(checker.resolve()), str(resources), str(output), extra[0] if extra else 'replay',
+                           str(ROOT / 'LongMarch/demo/gol/shaders/tiled_life.slang')],
                           capture_output=True, text=True)
 
 
@@ -43,7 +44,7 @@ with tempfile.TemporaryDirectory(prefix='game-bundle-', dir=args.output.parent) 
     shutil.copytree(args.patterns, staging / 'Patterns')
     while True:
         result = run(args.checker, staging, Path(temp) / 'check')
-        missing = re.search(r'Missing bundled shader ((?:slang|msl)-[0-9a-f]{64})', result.stdout + result.stderr)
+        missing = re.search(r'Missing bundled shader ((?:threads-)?(?:slang|msl|pre)-[0-9a-f]{64})', result.stdout + result.stderr)
         if missing is None:
             if result.returncode != 0:
                 raise RuntimeError(f'Game of Life failed:\n{result.stdout}{result.stderr}')
@@ -52,5 +53,11 @@ with tempfile.TemporaryDirectory(prefix='game-bundle-', dir=args.output.parent) 
         if not source.exists():
             raise RuntimeError(f'The prepare build did not produce {missing.group(1)}')
         shutil.copy2(source, staging / 'shaders')
+    for shader in (prepared / "shaders").glob("slang-*"):
+        shutil.copy2(shader, staging / "shaders")
+    # Metal replay uses threads-msl metadata, but Vulkan needs the original
+    # threads-slang entries even when Metal never reads them during replay.
+    for metadata in (prepared / "shaders").glob("threads-slang-*"):
+        shutil.copy2(metadata, staging / "shaders")
     staging.rename(args.output)
 print(f'Prepared Game of Life with {len(list((args.output / "shaders").iterdir()))} shaders in {args.output}')

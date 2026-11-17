@@ -40,6 +40,14 @@ private final class GameMetalView: MTKView {
     send(2, point)
   }
 
+  #if targetEnvironment(simulator)
+    // Use the real pinch input path to frame repeatable store captures.
+    func smokeZoom(_ scale: Double) {
+      guard scale.isFinite && scale > 0 else { return }
+      send(6, CGPoint(x: bounds.midX, y: bounds.midY), scale)
+    }
+  #endif
+
   override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
     guard event?.allTouches?.count == 1, let touch = touches.first else {
       cancelPointer()
@@ -66,6 +74,19 @@ private final class GameMetalView: MTKView {
       pointerDown = false
     }
   }
+  func cancelForResize() {
+    // Focus loss clears both mouse buttons in the shared game input layer.
+    // Cancelling only pointerDown leaves a two-finger pan held across a fold.
+    for gesture in gestureRecognizers ?? [] {
+      gesture.isEnabled = false
+      gesture.isEnabled = true
+    }
+    renderer.input(5, x: 0, y: 0, value: 0)
+    renderer.input(5, x: 0, y: 0, value: 1)
+    pointerDown = false
+    panPoint = .zero
+  }
+
   @objc private func magnify(_ gesture: UIPinchGestureRecognizer) {
     cancelPointer()
     // Ending touches report the remaining finger, not the midpoint; moving the
@@ -90,8 +111,8 @@ private final class GameMetalView: MTKView {
   }
 }
 
-// The window stays in its entry orientation. Only the icon angle follows the
-// device: there is no counter-rotated rectangular view or relayout to animate.
+// Conventional phones keep their entry orientation; Duo and iPad follow the
+// system window orientation, with layout derived from the current bounds.
 private final class GameCanvasView: UIView {
   let metal = GameMetalView(frame: .zero, device: nil)
   private weak var lockedScene: UIWindowScene?
@@ -100,6 +121,11 @@ private final class GameCanvasView: UIView {
   private var bottomControlInset: CGFloat?
   private var cutoutInsets: [CGFloat]?
   private var controlExtentLimit: CGFloat?
+  private var controlPixelSize: CGFloat?
+  private var hasHinge = false
+  private var controlOcclusions: [CGRect]?
+  private weak var layoutScreen: UIScreen?
+  private var layoutSmokeRows: [[String: Any]] = []
   // The short edge, in points, beyond which controls stop growing (iPad).
   private static let maxControlExtent: CGFloat = 560
 
@@ -107,11 +133,39 @@ private final class GameCanvasView: UIView {
     super.init(frame: frame)
     isMultipleTouchEnabled = true
     addSubview(metal)
+    if #available(iOS 27.1, *) {
+      addInteraction(UIHingeInteraction { [weak self] _, update in
+        guard let self, update.hinge != nil else { return }
+        // Capability detection, not a device-name or screen-size heuristic.
+        // Keep this policy through the temporary nil update during migration.
+        if !self.hasHinge {
+          self.hasHinge = true
+          self.stopOrientationTracking()
+          GameAppDelegate.orientationMask = .all
+          self.window?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+          self.metal.renderer.setGameIconRotation(0)
+        }
+        self.setNeedsLayout()
+      })
+    }
+    registerForTraitChanges([UITraitDisplayScale.self]) { (self: GameCanvasView, _: UITraitCollection) in
+      self.setNeedsLayout()
+    }
   }
   required init?(coder: NSCoder) { fatalError() }
 
   override func layoutSubviews() {
     super.layoutSubviews()
+    let previousOcclusions = controlOcclusions
+    let screen = window?.screen
+    let surfaceChanged = metal.bounds.size != bounds.size || layoutScreen !== screen
+    if surfaceChanged {
+      metal.cancelForResize()
+      layoutScreen = screen
+    }
+    if let screen, metal.contentScaleFactor != screen.scale {
+      metal.contentScaleFactor = screen.scale
+    }
     metal.frame = bounds
     if let window, bounds.height > 0 {
       // Read the window inset: this view deliberately ignores SwiftUI safe
@@ -136,10 +190,46 @@ private final class GameCanvasView: UIView {
         cutoutInsets = insets
         metal.renderer.setGameCutoutInsetsLeft(Float(insets[0]), top: Float(insets[1]), right: Float(insets[2]))
       }
+      if hasHinge {
+        // Match Harmony's 40 vp controls: UIKit points track display density,
+        // unlike a fraction of the changing folded/unfolded screen width.
+        let pixels = 40 * window.screen.scale
+        if controlPixelSize != pixels {
+          controlPixelSize = pixels
+          metal.renderer.setGameControlPixelSize(Float(pixels))
+        }
+      }
+      if #available(iOS 27.1, *), hasHinge, bounds.width > 0 {
+        // UIKit supplies actual camera/system exclusions in this view's
+        // coordinates, including interactive margins, on either display.
+        let regions = reservedRegions(kind: .occlusion).filter { $0.isActive }.map { region in
+          CGRect(x: region.frame.minX / bounds.width, y: region.frame.minY / bounds.height,
+                 width: region.frame.width / bounds.width, height: region.frame.height / bounds.height)
+        }
+        if controlOcclusions != regions {
+          controlOcclusions = regions
+          metal.renderer.setGameControlOcclusions(regions.map { NSValue(cgRect: $0) })
+        }
+      }
       let limit = Self.maxControlExtent / bounds.height
       if controlExtentLimit != limit {
         controlExtentLimit = limit
         metal.renderer.setGameControlExtentLimit(Float(limit))
+      }
+      if surfaceChanged || previousOcclusions != controlOcclusions,
+        ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_LAYOUT"] != nil
+      {
+        layoutSmokeRows.append([
+          "width_points": bounds.width, "height_points": bounds.height,
+          "scale": window.screen.scale, "foldable": hasHinge,
+          "occlusions": (controlOcclusions ?? []).map { String(describing: $0) },
+          "control_pixels": controlPixelSize ?? 0,
+          "renderer": String(describing: ObjectIdentifier(metal.renderer)),
+          "screen": String(describing: ObjectIdentifier(window.screen)),
+        ])
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+          .appendingPathComponent("LayoutSmoke.json")
+        try? JSONSerialization.data(withJSONObject: layoutSmokeRows).write(to: url)
       }
     }
   }
@@ -151,9 +241,17 @@ private final class GameCanvasView: UIView {
 
   override func didMoveToWindow() {
     super.didMoveToWindow()
+    setNeedsLayout()
+    if hasHinge, window != nil,
+      ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_ORIENTATION"] != nil
+    {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+        self?.checkOrientationLock()
+      }
+    }
     if window == nil {
       stopOrientationTracking()
-    } else if lockedScene == nil, traitCollection.userInterfaceIdiom == .phone,
+    } else if lockedScene == nil, !hasHinge, traitCollection.userInterfaceIdiom == .phone,
       let scene = window?.windowScene
     {
       entryOrientation = scene.interfaceOrientation
@@ -234,17 +332,21 @@ private final class GameCanvasView: UIView {
     metal.renderer.setGameIconRotation(Float(radians))
   }
 
-  // Verify the actual UIWindowScene refuses rotation, not just that the final
-  // framebuffer looks upright after a system rotation animation.
+  // Exercise the actual UIWindowScene rotation policy. Conventional phones
+  // reject this request; foldable phones accept it and relayout the canvas.
   private func checkOrientationLock() {
-    guard let scene = lockedScene else { return }
+    guard let scene = window?.windowScene else { return }
     let before = scene.interfaceOrientation
     let beforeBounds = bounds
     let requested: UIInterfaceOrientationMask = before == .portrait ? .landscapeRight : .portrait
     var rejected = false
-    scene.requestGeometryUpdate(.iOS(interfaceOrientations: requested)) { _ in rejected = true }
+    var rejection = ""
+    scene.requestGeometryUpdate(.iOS(interfaceOrientations: requested)) { error in
+      rejected = true
+      rejection = error.localizedDescription
+    }
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-      guard let self, self.lockedScene === scene else { return }
+      guard let self, self.window?.windowScene === scene else { return }
       var gestureController = self.window?.rootViewController
       while let child = gestureController?.childForScreenEdgesDeferringSystemGestures {
         gestureController = child
@@ -253,6 +355,10 @@ private final class GameCanvasView: UIView {
         "defers_bottom_gestures": gestureController?.preferredScreenEdgesDeferringSystemGestures
           .contains(.bottom) ?? false,
         "rotation_rejected": rejected,
+        "rotation_error": rejection,
+        "foldable_policy": self.hasHinge,
+        "control_pixel_size": self.controlPixelSize ?? 0,
+        "screen_scale": self.window?.screen.scale ?? 0,
         "interface_unchanged": scene.interfaceOrientation == before,
         "bounds_unchanged": self.bounds == beforeBounds,
         "view_transform_identity": self.metal.transform.isIdentity,
@@ -333,9 +439,9 @@ private struct PatternFile: Identifiable {
   var name: String { url.deletingPathExtension().lastPathComponent }
 }
 
-// On iPhone, the game freezes the interface orientation for the lifetime of its page.
+// On conventional iPhone, the game freezes the interface orientation for the lifetime of its page.
 // Device orientation remains available to its icons without rotating the UIWindow.
-// iPad rotates freely: the App Store requires all four orientations from apps
+// Foldable phones follow system rotation. iPad rotates freely: the App Store requires all four orientations from apps
 // that support multitasking, and its layout follows the window's short edges.
 @MainActor
 final class GameAppDelegate: NSObject, UIApplicationDelegate {
@@ -462,9 +568,16 @@ private struct PatternLibraryView: View {
   let system: () -> Void
   let cancel: () -> Void
   @State private var files = PatternLibrary.files()
-  @State private var name = "Life " + Date().formatted(
+  @State private var name = Self.captureSaveName ?? ("Life " + Date().formatted(
     .verbatim("\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits) \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)).\(minute: .twoDigits).\(second: .twoDigits)",
-      timeZone: .current, calendar: .current))
+      timeZone: .current, calendar: .current)))
+  private static var captureSaveName: String? {
+    let env = ProcessInfo.processInfo.environment
+    guard env["LONGMARCH_CAPTURE_PANEL"] == "save",
+      let value = env["LONGMARCH_CAPTURE_SAVE_NAME"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !value.isEmpty else { return nil }
+    return value
+  }
   @State private var replacing: URL?
   @State private var query = ""
   @State private var folderQuery = ""
@@ -659,6 +772,37 @@ private struct DesktopGameView: UIViewRepresentable {
     private var sizeOrientationObserver: NSObjectProtocol?
     private weak var library: UIViewController?
     private var libraryHandled = false
+    private var smokePatternLoaded = false
+    private var captureStarted = false
+
+    func captureAfterFirstFrame() {
+      guard !captureStarted,
+        ProcessInfo.processInfo.environment["LONGMARCH_CAPTURE_PATTERN"] != nil
+      else { return }
+      captureStarted = true
+      view?.renderer.requestFileAction(1)
+    }
+
+    func confirmDestructiveAction(_ action: Int) {
+      guard let view, let root = view.window?.rootViewController,
+        root.presentedViewController == nil
+      else {
+        view?.renderer.completeConfirmation(false)
+        return
+      }
+      let reset = action == 1
+      let alert = UIAlertController(
+        title: NSLocalizedString(reset ? "Reset canvas?" : "Randomize canvas?", comment: ""),
+        message: NSLocalizedString(reset ? "This will clear all cells on the canvas." : "This will replace all cells with a new random pattern.", comment: ""),
+        preferredStyle: .alert)
+      alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel) { [weak view] _ in
+        view?.renderer.completeConfirmation(false)
+      })
+      alert.addAction(UIAlertAction(title: NSLocalizedString(reset ? "Reset" : "Randomize", comment: ""), style: .destructive) { [weak view] _ in
+        view?.renderer.completeConfirmation(true)
+      })
+      root.present(alert, animated: true)
+    }
 
     func requestSize(_ axis: Int, value: Int, bounds: CGRect) {
       guard let view, let root = view.window?.rootViewController,
@@ -723,12 +867,28 @@ private struct DesktopGameView: UIViewRepresentable {
         return
       }
       // LONGMARCH_SMOKE_PATTERN opens a built-in pattern by name instead of the library.
-      if action == 1, let name = ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_PATTERN"],
+      if action == 1, !smokePatternLoaded,
+        let name = ProcessInfo.processInfo.environment["LONGMARCH_CAPTURE_PATTERN"]
+          ?? ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_PATTERN"],
         let pattern = BuiltinPattern.all.first(where: { $0.name == name })
       {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Builtin.cells")
         if (try? pattern.cells.write(to: url, atomically: true, encoding: .utf8)) != nil {
-          complete(url)
+          smokePatternLoaded = true
+          view.renderer.completeFile(url.path) { [weak self] message in
+            guard let self else { return }
+            self.error(message)
+            guard message == nil, self.captureStarted else { return }
+            let env = ProcessInfo.processInfo.environment
+            if let text = env["LONGMARCH_CAPTURE_ZOOM"], let zoom = Double(text),
+              zoom.isFinite, zoom > 0
+            {
+              self.view?.renderer.input(6, x: 0.5, y: 0.5, value: min(10, zoom))
+            }
+            if let panel = env["LONGMARCH_CAPTURE_PANEL"], panel == "library" || panel == "save" {
+              self.view?.renderer.requestFileAction(panel == "save" ? 2 : 1)
+            }
+          }
           return
         }
       }
@@ -824,6 +984,9 @@ private struct DesktopGameView: UIViewRepresentable {
     let view = canvas.metal
     context.coordinator.view = view
     context.coordinator.error = { status(0, $0) }
+    view.renderer.confirmationRequest = { [weak coordinator = context.coordinator] action in
+      coordinator?.confirmDestructiveAction(action)
+    }
     view.renderer.fileRequest = { [weak coordinator = context.coordinator] action in
       coordinator?.request(action)
     }
@@ -831,11 +994,14 @@ private struct DesktopGameView: UIViewRepresentable {
       coordinator?.requestSize(axis, value: value, bounds: bounds)
     }
     view.renderer.start(view: view, resources: GameResources.url) {
-      _, _, fps, _, _, _, _, error in status(fps, error)
+      [weak coordinator = context.coordinator] _, _, fps, _, _, _, frames, error in
+      status(fps, error)
+      if error == nil && frames > 0 { coordinator?.captureAfterFirstFrame() }
     }
     if let file = ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_FILE"] {
       // Opens the pattern library the way the open/save buttons do, for screenshots.
-      DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak coordinator = context.coordinator] in
+      let delay = Double(ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_FILE_DELAY"] ?? "1") ?? 1
+      DispatchQueue.main.asyncAfter(deadline: .now() + max(1, delay)) { [weak coordinator = context.coordinator] in
         coordinator?.request(file == "save" ? 2 : 1)
       }
     }
@@ -854,6 +1020,15 @@ private struct DesktopGameView: UIViewRepresentable {
         }
       }
     }
+    #if targetEnvironment(simulator)
+      if let value = ProcessInfo.processInfo.environment["LONGMARCH_SMOKE_ZOOM"],
+        let scale = Double(value)
+      {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak view] in
+          view?.smokeZoom(scale)
+        }
+      }
+    #endif
     return canvas
   }
   func updateUIView(_ view: GameCanvasView, context: Context) {

@@ -1,8 +1,8 @@
 import { common } from '@kit.AbilityKit';
-import { window, display } from '@kit.ArkUI';
+import { window } from '@kit.ArkUI';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
-import { sensor } from '@kit.SensorServiceKit';
 import native from 'libgameoflife.so';
+import { HostedPrivacy } from '../privacy/HostedPrivacy';
 
 interface PatternFile { name: string; modified: number; }
 // A named pattern from the built-in Life Lexicon library (demo/gol/patterns/library.json).
@@ -69,16 +69,18 @@ function patternCells(pattern: BuiltinPattern): string {
 }
 interface NativeCommand {
   type: string; value?: number | boolean; axis?: number; path?: string; angle?: number; kind?: number;
-  x?: number; y?: number; request?: number;
+  x?: number; y?: number; right?: number; request?: number;
 }
 class NativeStatus {
   ready: boolean = false;
   error: string = '';
+  fileError: string = '';
   device: string = '';
   resources: string = '';
   fps: number = 0;
   frames: number = 0;
   fileRequest: number = 0;
+  confirmationRequest: number = 0;
   fileRevision: number = 0;
   sizeAxis: number = 0;
   sizeValue: number = 64;
@@ -118,9 +120,25 @@ function rectEnd(start: number, size: number): number {
   return size > 0 ? start + size : 0;
 }
 
+class FileOperationError extends Error {
+  resourceKey: string;
+  constructor(resourceKey: string) {
+    super(resourceKey);
+    this.resourceKey = resourceKey;
+  }
+}
+
 @Entry
 @Component
 struct Index {
+  private privacy: HostedPrivacy = new HostedPrivacy();
+  private pageAlive: boolean = false;
+  private privacyObserved: boolean = false;
+  private privacyRequested: boolean = false;
+  @State private privacyAgreed: boolean = false;
+  @State private privacyBusy: boolean = false;
+  @State private privacyError: string = '';
+  @StorageLink('privacyForeground') @Watch('checkPrivacy') private privacyForeground: number = 0;
   // The game opens once the bundled resources are ready.
   @State private opened: boolean = false;
   @State private stats: NativeStatus = new NativeStatus();
@@ -145,6 +163,8 @@ struct Index {
   private libraryRows: LibraryRows = new LibraryRows();
   private builtins?: BuiltinPattern[];
   private request: number = 0;
+  private captureStarted: boolean = false;
+  private captureWaiting: boolean = false;
   private areaWidth: number = 1;
   private areaHeight: number = 1;
   private lastX: number = 0;
@@ -152,8 +172,6 @@ struct Index {
   private distance: number = 0;
   private button: number = -1;
   private multi: boolean = false;
-  private sensorActive: boolean = false;
-  private entryAngle: number = 0;
   private shownError: string = '';
   private win?: window.Window;
   private context(): common.UIAbilityContext { return this.getUIContext().getHostContext() as common.UIAbilityContext; }
@@ -161,9 +179,103 @@ struct Index {
   private text(name: string, ...args: (string | number)[]): string {
     return this.context().resourceManager.getStringByNameSync(name, ...args);
   }
-  private send(c: NativeCommand): void { native.command(JSON.stringify(c)); }
+  private send(c: NativeCommand): void {
+    if (AppStorage.get<boolean>('privacyNativeReady')) native.command(JSON.stringify(c));
+  }
 
   aboutToAppear(): void {
+    this.pageAlive = true;
+    // Subscribe before querying so agreement during startup cannot be missed.
+    this.privacy.observe(() => this.checkPrivacy()).then(() => {
+      if (!this.pageAlive) return;
+      this.privacyObserved = true;
+      this.checkPrivacy();
+    })
+      .catch(() => { this.privacyError = this.text('privacy_unavailable'); });
+  }
+
+  private checkPrivacy(): void {
+    if (!this.pageAlive || !this.privacyObserved) return;
+    try {
+      const agreed = this.privacy.isAgreed();
+      this.privacyError = '';
+      if (agreed && !this.privacyAgreed) {
+        this.privacyAgreed = true;
+        this.startGame();
+      } else if (!agreed && this.privacyAgreed) {
+        this.stopGame();
+      }
+      if (!agreed && !this.privacyRequested) this.requestPrivacy();
+    } catch (e) {
+      if (this.privacyAgreed) this.stopGame();
+      this.privacyError = this.text('privacy_unavailable');
+    }
+  }
+
+  private async requestPrivacy(): Promise<void> {
+    if (!this.pageAlive || this.privacyBusy) return;
+    this.privacyRequested = true;
+    this.privacyBusy = true;
+    this.privacyError = '';
+    try {
+      if (!this.privacyObserved) {
+        await this.privacy.observe(() => this.checkPrivacy());
+        this.privacyObserved = true;
+      }
+      await this.privacy.request(this.context());
+      if (!this.pageAlive) return;
+      this.checkPrivacy();
+      if (!this.privacyAgreed && this.privacyError.length === 0) {
+        await this.context().terminateSelf();
+      }
+    } catch (e) { this.privacyError = this.text('privacy_unavailable'); }
+    finally { this.privacyBusy = false; }
+  }
+
+  private async showPrivacy(): Promise<void> {
+    try { await this.privacy.showPolicy(this.context()); }
+    catch (e) { this.alert(this.text('privacy_title'), this.text('privacy_unavailable')); }
+  }
+
+  private confirmRevoke(): void {
+    this.getUIContext().showAlertDialog({
+      title: this.text('privacy_revoke'), message: this.text('privacy_revoke_message'),
+      primaryButton: { value: this.text('cancel'), action: () => {} },
+      secondaryButton: { value: this.text('privacy_revoke'), action: () => {
+        try {
+          this.privacy.revoke();
+          this.stopGame();
+          this.context().terminateSelf().catch(() => { this.privacyError = this.text('privacy_exit_failed'); });
+        } catch (e) { this.alert(this.text('privacy_title'), this.text('privacy_unavailable')); }
+      } }
+    });
+  }
+
+  private stopGame(): void {
+    if (this.timer >= 0) clearInterval(this.timer);
+    this.timer = -1;
+    this.libraryHandled = true;
+    this.libraryVisible = false;
+    if (this.win) {
+      this.win.off('avoidAreaChange');
+      this.win.off('windowSizeChange');
+      this.win = undefined;
+    }
+    this.leave();
+    this.privacyAgreed = false;
+    AppStorage.setOrCreate('privacyNativeReady', false);
+  }
+
+  private startGame(): void {
+    try {
+      native.initialize(this.context().resourceManager, this.context().filesDir);
+      AppStorage.setOrCreate('privacyNativeReady', true);
+    } catch (e) {
+      this.privacyAgreed = false;
+      this.privacyError = this.text('game_error');
+      this.alert(this.text('game_error'), `Initialization: ${e}`);
+      return;
+    }
     const startup = AppStorage.get<string>('gameStartupError') ?? '';
     if (startup.length > 0) this.alert(this.text('game_error'), startup);
     this.trackSafeArea();
@@ -171,30 +283,51 @@ struct Index {
       const value = JSON.parse(native.status()) as NativeStatus;
       if (value.ready === undefined) return;
       this.stats = value;
+      if (value.confirmationRequest === 0) this.confirmationBusy = false;
+      else if (!this.confirmationBusy) this.confirmDestructiveAction(value.confirmationRequest);
       if (value.ready && !this.opened) this.open();
       if (value.sizeAxis !== this.sizeAxis) {
         this.sizeAxis = value.sizeAxis;
         this.sizeValue = value.sizeValue;
         this.sizeVisible = value.sizeAxis > 0;
       }
-      if (this.opened && value.fileRequest > 0 && !this.fileBusy) this.fileAction(value.fileRequest);
+      if (this.opened && value.frames > 0 && !this.captureStarted) {
+        this.captureStarted = true;
+        const pattern = AppStorage.get<string>('capturePattern') ?? '';
+        if (pattern.length > 0) {
+          this.captureWaiting = true;
+          this.fileBusy = true;
+          this.send({ type: 'requestFile', value: 1 });
+        }
+      }
+      if (this.captureWaiting && value.fileRequest === 1) {
+        this.captureWaiting = false;
+        this.prepareCapture();
+      } else if (this.opened && value.fileRequest > 0 && !this.fileBusy) {
+        this.fileAction(value.fileRequest);
+      }
       this.showNativeError(value.error);
     }, 250);
   }
   aboutToDisappear(): void {
+    this.pageAlive = false;
+    this.privacy.dispose();
     if (this.timer >= 0) clearInterval(this.timer);
     if (this.win) {
       this.win.off('avoidAreaChange');
       this.win.off('windowSizeChange');
     }
     this.leave();
+    AppStorage.setOrCreate('privacyNativeReady', false);
   }
 
   // Layout is fullscreen with hidden system bars, like the iOS app. Content that
   // iOS keeps inside its safe area avoids the camera cutout and gesture strip here.
   private async trackSafeArea(): Promise<void> {
     try {
-      this.win = await window.getLastWindow(this.context());
+      const win = await window.getLastWindow(this.context());
+      if (!this.pageAlive || !this.privacyAgreed) return;
+      this.win = win;
       this.updateSafeArea();
       this.win.on('avoidAreaChange', () => this.updateSafeArea());
       this.win.on('windowSizeChange', () => this.updateSafeArea());
@@ -213,6 +346,11 @@ struct Index {
     const indicator = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
     const bottom = Math.max(indicator.bottomRect.height > 0 ? rect.height - indicator.bottomRect.top : 0,
       cutout.bottomRect.height > 0 ? rect.height - cutout.bottomRect.top : 0);
+    // vp follows the current display density, unlike a percentage of the canvas.
+    this.send({ type: 'layout', value: ui.vp2px(40),
+      x: rectEnd(cutout.leftRect.left, cutout.leftRect.width) / Math.max(1, rect.width),
+      y: rectEnd(cutout.topRect.top, cutout.topRect.height) / Math.max(1, rect.height),
+      right: cutout.rightRect.width > 0 ? (rect.width - cutout.rightRect.left) / Math.max(1, rect.width) : 0 });
     this.safeBottom = ui.px2vp(bottom);
     this.sendBottomInset();
   }
@@ -235,56 +373,38 @@ struct Index {
     this.alert(this.text('game_error'), error);
   }
 
-  // The interface keeps the orientation the game opened in; gravity turns the icons.
-  private async lockOrientation(): Promise<void> {
-    try {
-      const win = await window.getLastWindow(this.context());
-      const rotation = display.getDefaultDisplaySync().rotation;
-      this.entryAngle = rotation * Math.PI / 2;
-      let orientation = window.Orientation.PORTRAIT;
-      if (rotation === 1) orientation = window.Orientation.LANDSCAPE;
-      else if (rotation === 3) orientation = window.Orientation.LANDSCAPE_INVERTED;
-      else if (rotation === 2) orientation = window.Orientation.PORTRAIT_INVERTED;
-      await win.setPreferredOrientation(orientation);
-    } catch (e) { this.alert(this.text('game_error'), `Orientation: ${e}`); }
+  private confirmationBusy: boolean = false;
+  private confirmDestructiveAction(action: number): void {
+    this.confirmationBusy = true;
+    let finished = false;
+    const complete = (accepted: boolean): void => {
+      if (finished) return;
+      finished = true;
+      this.send({ type: 'confirm', value: accepted });
+      // Keep the guard until native.status acknowledges the completed request.
+    };
+    this.getUIContext().showAlertDialog({
+      title: this.text(action === 1 ? 'reset_canvas_title' : 'randomize_canvas_title'),
+      message: this.text(action === 1 ? 'reset_canvas_message' : 'randomize_canvas_message'),
+      autoCancel: true,
+      cancel: () => complete(false),
+      primaryButton: { value: $r('app.string.cancel'), action: () => complete(false) },
+      secondaryButton: { value: this.text(action === 1 ? 'reset_canvas' : 'randomize_canvas'),
+        fontColor: DESTRUCTIVE, action: () => complete(true) }
+    });
   }
+
   private open(): void {
     this.shownError = '';
     this.opened = true;
     this.button = -1; this.multi = false;
-    this.send({ type: 'open' });
-    this.lockOrientation();
-    this.startGravity();
+    this.send({ type: 'open', value: (AppStorage.get<string>('capturePattern') ?? '').length > 0 });
+    this.updateSafeArea();
+    this.send({ type: 'icons', angle: 0 });
   }
   private leave(): void {
     this.send({ type: 'stop' });
     this.opened = false; this.sizeAxis = 0; this.sizeVisible = false; this.shownError = '';
-    this.stopGravity();
-  }
-  // The direction icons turn with the device. The sensor is used only while
-  // the page is visible: apps must not read sensors in the background.
-  private startGravity(): void {
-    if (this.sensorActive) return;
-    try {
-      sensor.on(sensor.SensorId.GRAVITY, (data: sensor.GravityResponse) => {
-        if (Math.abs(data.x) + Math.abs(data.y) > 3) {
-          const angle = Math.round(Math.atan2(-data.x, data.y) / (Math.PI / 2)) * Math.PI / 2;
-          this.send({ type: 'icons', angle: this.entryAngle - angle });
-        }
-      }, { interval: 200000000 });
-      this.sensorActive = true;
-    } catch (e) { /* Direction icons remain upright if no gravity sensor is available. */ }
-  }
-  private stopGravity(): void {
-    if (!this.sensorActive) return;
-    try { sensor.off(sensor.SensorId.GRAVITY); } catch (e) { /* Already unsubscribed. */ }
-    this.sensorActive = false;
-  }
-  onPageShow(): void {
-    if (this.opened) this.startGravity();
-  }
-  onPageHide(): void {
-    this.stopGravity();
   }
   private applySize(value: number): void {
     this.sizeValue = Math.max(2, Math.min(256, Math.round(value)));
@@ -357,13 +477,44 @@ struct Index {
       await new Promise<void>((resolve) => setTimeout(resolve, 100));
       const value = JSON.parse(native.status()) as NativeStatus;
       if (value.fileRevision >= id) {
-        if (value.error.length > 0) throw new Error(value.error);
+        if ((value.fileError ?? '').length > 0) {
+          const invalid = value.fileError.startsWith('Pattern');
+          throw new FileOperationError(invalid ? 'invalid_pattern_file' : 'file_operation_failed');
+        }
         return;
       }
       if (!this.opened) return;
     }
-    throw new Error('File operation timed out');
+    throw new FileOperationError('file_operation_failed');
   }
+  // Invoked only after normal privacy consent, resource extraction and first frame.
+  // Pattern import, camera pinch and sheets use the same paths as user actions.
+  private async prepareCapture(): Promise<void> {
+    try {
+      const requestedName = AppStorage.get<string>('capturePattern') ?? '';
+      // Cloud shell inputs can reject quoted names; keep explicit space-free aliases.
+      const name = requestedName === 'pi-orbital' ? 'pi orbital' :
+        requestedName === 'koks-galaxy' ? "Kok's galaxy" : requestedName;
+      const pattern = this.loadBuiltins().find((item: BuiltinPattern) => item.name === name);
+      if (!pattern) throw new FileOperationError('invalid_pattern_file');
+      const path = `${this.context().cacheDir}/Capture.cells`;
+      const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+      try { fs.writeSync(file.fd, patternCells(pattern)); } finally { fs.closeSync(file); }
+      await this.completeFile(path);
+      const zoom = Number(AppStorage.get<string>('captureZoom') ?? '1');
+      if (Number.isFinite(zoom) && zoom > 0) {
+        this.send({ type: 'input', kind: 6, x: 0.5, y: 0.5, value: Math.min(10, zoom) });
+      }
+      const panel = AppStorage.get<string>('capturePanel') ?? '';
+      if (panel === 'library' || panel === 'save') {
+        this.send({ type: 'requestFile', value: panel === 'save' ? 2 : 1 });
+      }
+    } catch (e) {
+      try { await this.completeFile(''); } catch (cancelError) { /* Report the capture setup error below. */ }
+      this.alert(this.text('game_error'), this.text('invalid_pattern_file'));
+    } finally { this.fileBusy = false; }
+  }
+
   private patternDirectory(): string {
     const directory = `${this.context().filesDir}/patterns`;
     if (!fs.accessSync(directory)) fs.mkdirSync(directory);
@@ -446,6 +597,10 @@ struct Index {
     const now = new Date();
     this.saveName = `Life ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
       `${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}`;
+    if ((AppStorage.get<string>('capturePanel') ?? '') === 'save') {
+      const captureName = AppStorage.get<string>('captureSaveName') ?? '';
+      if (captureName.length > 0) this.saveName = captureName;
+    }
     this.libraryVisible = true;
   }
   // Runs one choice from the library after closing it; cancelling reaches the
@@ -456,8 +611,13 @@ struct Index {
     try {
       await work();
     } catch (e) {
-      this.alert(this.text('game_error'), `Files: ${e}`);
-      try { await this.completeFile(''); } catch (cancelError) { /* Keep the original error visible. */ }
+      // CompleteHostedFile already restores the game after a parse failure.
+      // Only cancel if the picker/IO failed before delivering a result.
+      const status = JSON.parse(native.status()) as NativeStatus;
+      if (status.fileRequest > 0) {
+        try { await this.completeFile(''); } catch (cancelError) { /* Keep the original error. */ }
+      }
+      this.alert(this.text('game_error'), this.text(e instanceof FileOperationError ? e.resourceKey : 'file_operation_failed'));
     }
     finally { this.fileBusy = false; }
   }
@@ -497,7 +657,7 @@ struct Index {
       fs.unlinkSync(`${this.patternDirectory()}/${pattern.name}.cells`);
       this.refreshPatterns();
       this.rebuildRows();
-    } catch (e) { this.alert(this.text('game_error'), `Files: ${e}`); }
+    } catch (e) { this.alert(this.text('game_error'), this.text('file_operation_failed')); }
   }
   private systemFile(): void {
     const save = this.librarySave;
@@ -506,7 +666,7 @@ struct Index {
       const dialog = new picker.DocumentViewPicker(this.context());
       if (!save) {
         const options = new picker.DocumentSelectOptions(); options.maxSelectNumber = 1;
-        const uris = await dialog.select(options);
+        const uris = (await dialog.select(options)) ?? [];
         if (uris.length === 0) { await this.completeFile(''); return; }
         const file = fs.openSync(uris[0], fs.OpenMode.READ_ONLY);
         try { await fs.copyFile(file.fd, temp); } finally { fs.closeSync(file); }
@@ -514,7 +674,7 @@ struct Index {
       } else {
         await this.completeFile(temp);
         const options = new picker.DocumentSaveOptions(); options.newFileNames = ['Life.cells'];
-        const uris = await dialog.save(options);
+        const uris = (await dialog.save(options)) ?? [];
         if (uris.length > 0) {
           const file = fs.openSync(uris[0], fs.OpenMode.READ_WRITE);
           try { await fs.copyFile(temp, file.fd); } finally { fs.closeSync(file); }
@@ -679,6 +839,12 @@ struct Index {
         }
       }
       .cachedCount(8).scrollBar(BarState.Auto).edgeEffect(EdgeEffect.Spring).layoutWeight(1).width('100%')
+      Row({ space: 24 }) {
+        Text($r('app.string.privacy_title')).fontSize(14).fontColor(TINT)
+          .padding(10).onClick(() => this.showPrivacy())
+        Text($r('app.string.privacy_revoke')).fontSize(14).fontColor(SECONDARY)
+          .padding(10).onClick(() => this.confirmRevoke())
+      }.justifyContent(FlexAlign.Center).width('100%')
       Text(this.librarySave ? $r('app.string.save_to_files') : $r('app.string.open_from_files'))
         .fontSize(17).fontColor(TINT).padding({ top: 14, bottom: 14 + this.safeBottom })
         .onClick(() => this.systemFile())
@@ -688,17 +854,33 @@ struct Index {
   // ---- Game page (iOS GamesView) ----
 
   private canvasArea(area: Area): void {
+    // Fold/rotation invalidates coordinates of any gesture still in flight.
+    if (this.button >= 0) { this.pointer(5, 0, 0, 0); this.pointer(5, 0, 0, 1); }
+    this.button = -1; this.multi = false; this.distance = 0;
+    this.closeSize();
     this.areaWidth = Number(area.width); this.areaHeight = Number(area.height);
+    this.updateSafeArea();
     this.sendBottomInset();
   }
 
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
       // The canvas fills the display; the page stays blank until resources are ready.
-      if (this.opened) {
+      if (this.privacyAgreed && this.opened) {
         Stack() { this.surface() }
           .width('100%').height('100%')
           .onAreaChange((oldArea: Area, area: Area) => this.canvasArea(area))
+      }
+      if (!this.privacyAgreed && this.privacyError.length > 0) {
+        Column({ space: 20 }) {
+          Text($r('app.string.privacy_title')).fontSize(22).fontColor(LABEL)
+          Text(this.privacyError).fontSize(16).fontColor(SECONDARY)
+          Button($r('app.string.privacy_retry')).enabled(!this.privacyBusy)
+            .onClick(() => this.requestPrivacy())
+          Button($r('app.string.privacy_exit')).onClick(() => {
+            this.context().terminateSelf().catch(() => { this.privacyError = this.text('privacy_exit_failed'); });
+          })
+        }.padding(32).width('100%').height('100%').justifyContent(FlexAlign.Center)
       }
     }
     .width('100%').height('100%').backgroundColor(BACKGROUND)

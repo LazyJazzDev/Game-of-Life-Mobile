@@ -7,8 +7,11 @@
 
 #include "demo/gol/application/listener.h"
 #include "demo/gol/cells_pattern.h"
+#include "demo/gol/game_of_life_gui.h"
+#include "demo/gol/gpu/tiled_life_storage.h"
 #include "demo/gol/simulation_clock.h"
 #include "demos/DemoSession.h"
+#include "grassland/rhi/shader_cache.h"
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
@@ -25,14 +28,20 @@ static void Settle(DemoSession &session) {
 }
 
 static std::vector<uint8_t> Pixels(DemoSession &session) {
-  auto extent = session.Image()->Extent();
+  auto extent = session.Image()->GetDesc();
   std::vector<uint8_t> pixels(extent.width * extent.height * 4);
-  session.Image()->DownloadData(pixels.data());
+  grassland::rhi::ObjPtr<grassland::rhi::ICommandContext> context = session.Game()->Queue()->CreateCommandContext();
+  grassland::rhi::ObjPtr<grassland::rhi::IDownloadToken> download = context->CmdDownloadImage(session.Image());
+  grassland::rhi::ObjPtr<grassland::rhi::ISubmissionToken> submission = context->Submit();
+  Check(submission && submission->WaitHost() && download && download->CopyTo(pixels.data(), pixels.size()),
+        "Readback failed");
   return pixels;
 }
 
 static void CheckListenerMutation() {
-  life_demo::Application app("listener check", 32, 32, grassland::graphics::BACKEND_API_DEFAULT, true);
+  life_demo::Application app("listener check", 32, 32, grassland::rhi::BACKEND_API_DEFAULT, true);
+
+  Check(app.InitializeHosted(), "Listener host initialization failed");
 
   struct Probe : life_demo::Listener {
     explicit Probe(life_demo::Application *app) : Listener(app) {
@@ -51,11 +60,11 @@ static void CheckListenerMutation() {
   auto first = std::less<life_demo::Listener *>{}(&a, &b) ? &a : &b;
   auto second = first == &a ? &b : &a;
   first->action = [&] { app.UnregisterListener(second); };
-  app.GetWindow()->SendPointer(1, 1);
+  app.HostedInput()->SendPointer(1, 1);
   Check(first->calls == 1 && second->calls == 0, "Removed listener received a stale snapshot event");
   first->action = {};
   app.RegisterListener(second);
-  app.GetWindow()->SendPointer(2, 2);
+  app.HostedInput()->SendPointer(2, 2);
   Check(first->calls == 2 && second->calls == 1, "Re-registered listener missed input");
   app.UnregisterListener(&a);
   app.UnregisterListener(&b);
@@ -64,7 +73,30 @@ static void CheckListenerMutation() {
 int main(int argc, char **argv) {
   try {
     Check(argc == 2, "usage: gol_games_check <resources>");
+    grassland::rhi::ConfigureShaderCache({std::filesystem::path(argv[1]) / "shaders", true, true});
     CheckListenerMutation();
+    GridView zoom_limits;
+    zoom_limits.Zoom(1.0e-6f, glm::vec2{0}, 64.0f / 16384);
+    Check(zoom_limits.zoom == 64.0f / 16384, "Zoom does not reach the whole fixed world");
+    zoom_limits.Zoom(1.0e6f, glm::vec2{0}, 64.0f / 16384);
+    Check(zoom_limits.zoom == 12.0f, "Maximum magnification changed");
+    for (int level = 0; level < 3; ++level) {
+      const float unit = 1000.0f / life_demo::GridDetail::kSpans[level];
+      auto begin = life_demo::GridDetail::At(unit * 0.5f, 1000);
+      auto middle = life_demo::GridDetail::At(unit * 0.75f, 1000);
+      auto end = life_demo::GridDetail::At(unit, 1000);
+      Check(begin.major == level && begin.transition == 0, "Checker transition began before half-screen span");
+      Check(middle.major == level && std::abs(middle.transition - 0.5f) < 1e-6f,
+            "Checker transition is not linear in projected span");
+      Check(end.major == level + 1 && end.transition == 0, "Parent checker remains at one-screen span");
+    }
+    life_demo::GridRulerTiming ruler;
+    ruler.Activate(10);
+    Check(ruler.Opacity(10) == 0 && ruler.Opacity(10.15) > 0.999f, "Ruler did not fade in");
+    ruler.Activate(11);
+    Check(ruler.Opacity(13) > 0.999f && ruler.Opacity(13.175) > 0.49f && ruler.Opacity(13.175) < 0.51f &&
+              ruler.Opacity(13.35) == 0,
+          "Ruler did not hold two seconds after the last zoom and fade out");
     SimulationClock clock;
     int steps = 0;
     clock.Advance(.2, true, 0, [&] { ++steps; });
@@ -83,7 +115,8 @@ int main(int argc, char **argv) {
       auto before = Pixels(game);
       Check(*std::max_element(before.begin(), before.end()) > 200, "Shared UI produced no visible geometry");
       auto *window = game.Game()->Window();
-      Check(window->IsHosted() && window->GetFramebufferSize() == glm::ivec2(640, 800), "Hosted resize failed");
+      Check(window->GLFWWindow() == nullptr && window->GetFramebufferSize() == glm::ivec2(640, 800),
+            "Hosted resize failed");
       window->CursorEnterEvent().InvokeCallbacks(true);
       game.Game()->SetIconOrientation(glm::half_pi<float>());
       Check(game.Game()->NextFrameDelay() == 0, "Orientation failed to wake paused Life");
@@ -103,12 +136,12 @@ int main(int argc, char **argv) {
       window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
       game.Game()->ResetClock();
       game.Render();
-      Check(game.Game()->NextFrameDelay() == 0, "Cell edit failed to wake its animation");
+      // GPU edits are visible immediately; there is no CPU per-cell animation pass.
       Settle(game);
       Check(Pixels(game) != before, "Desktop cell interaction did not change the rendered grid");
       auto edited = Pixels(game);
       window->MagnifyEvent().InvokeCallbacks(
-          grassland::graphics::MagnifyGesture{1.5, 320, 400, grassland::graphics::MagnifyPhase::kUpdate});
+          grassland::rhi::MagnifyGesture{1.5, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
       Settle(game);
       Check(Pixels(game) != edited, "Desktop grid magnification did not update rendering");
       // One finger (the left button) pans the enlarged grid; returning the same
@@ -155,37 +188,201 @@ int main(int argc, char **argv) {
           std::filesystem::temp_directory_path() /
           ("longmarch-ui-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".cells");
       Check(game.Game()->CompleteFile(path.string()).empty(), "Hosted grid export failed");
-      auto saved = LoadCellsPattern(path.string());
+      std::ifstream saved_file(path, std::ios::binary);
+      std::vector<uint32_t> saved;
+      std::string saved_error;
+      Check(life_demo::ReadTiledState(saved_file, saved, saved_error), "Sparse grid export is invalid");
+      saved_file.close();
+      window->SendKey(GLFW_KEY_O, GLFW_PRESS, GLFW_MOD_CONTROL);
+      window->SendKey(GLFW_KEY_O, GLFW_RELEASE, GLFW_MOD_CONTROL);
+      Settle(game);
+      Check(game.Game()->CompleteFile(path.string()).empty(), "V2 binary save was not recognized by the file UI");
+      Settle(game);
+      window->SendKey(GLFW_KEY_S, GLFW_PRESS, GLFW_MOD_CONTROL);
+      window->SendKey(GLFW_KEY_S, GLFW_RELEASE, GLFW_MOD_CONTROL);
+      Settle(game);
+      Check(game.Game()->CompleteFile(path.string()).empty(), "Could not resave loaded V2 grid");
+      std::ifstream reloaded_file(path, std::ios::binary);
+      std::vector<uint32_t> reloaded;
+      Check(life_demo::ReadTiledState(reloaded_file, reloaded, saved_error) && reloaded == saved,
+            "V2 UI save/load roundtrip changed the grid");
+      reloaded_file.close();
       std::filesystem::remove(path);
-      Check(saved.width == 64 && saved.height == 64 && std::count(saved.cells.begin(), saved.cells.end(), 1) == 36,
-            "Import/export lost centered pattern cells or grid dimensions");
+      size_t live = 0;
+      for (auto word : saved)
+        while (word) {
+          word &= word - 1;
+          ++live;
+        }
+      Check(live == 36, "Import/export lost pattern cells");
+      // Malformed imports must preserve the current grid and release the file UI.
+      for (const auto &invalid : {std::string("not a saved pattern"), std::string("OO\nO\n"), std::string()}) {
+        std::ofstream bad(path, std::ios::binary);
+        bad << invalid;
+        bad.close();
+        window->SendKey(GLFW_KEY_O, GLFW_PRESS, GLFW_MOD_CONTROL);
+        window->SendKey(GLFW_KEY_O, GLFW_RELEASE, GLFW_MOD_CONTROL);
+        Settle(game);
+        Check(game.Game()->FileRequest() == 1, "Open did not recover after a previous import");
+        Check(!game.Game()->CompleteFile(path.string()).empty(), "Invalid file was accepted");
+        Check(game.Game()->FileRequest() == 0, "Failed import left the file UI blocked");
+        Settle(game);
+        window->SendKey(GLFW_KEY_S, GLFW_PRESS, GLFW_MOD_CONTROL);
+        window->SendKey(GLFW_KEY_S, GLFW_RELEASE, GLFW_MOD_CONTROL);
+        Settle(game);
+        Check(game.Game()->CompleteFile(path.string()).empty(), "Export failed after invalid import");
+        std::ifstream preserved_file(path, std::ios::binary);
+        std::vector<uint32_t> preserved;
+        Check(life_demo::ReadTiledState(preserved_file, preserved, saved_error) && preserved == saved,
+              "Invalid import modified the current simulation");
+      }
+      // The same live session must survive Duo's separate inner/outer surfaces.
+      game.Game()->SetControlPixelSize(120);
+      for (auto size :
+           {glm::ivec2{1398, 2034}, glm::ivec2{2853, 2007}, glm::ivec2{2007, 2853}, glm::ivec2{1398, 2034}}) {
+        window->SendMouseButton(GLFW_MOUSE_BUTTON_RIGHT, GLFW_PRESS);
+        window->SendFocus(false);
+        Check(!window->IsMouseButtonDown(GLFW_MOUSE_BUTTON_RIGHT), "Fold left two-finger pan pressed");
+        window->SendFocus(true);
+        game.Resize(size.x, size.y);
+        game.Render();
+        window->SendKey(GLFW_KEY_S, GLFW_PRESS, GLFW_MOD_CONTROL);
+        window->SendKey(GLFW_KEY_S, GLFW_RELEASE, GLFW_MOD_CONTROL);
+        Settle(game);
+        Check(game.Game()->CompleteFile(path.string()).empty(), "Export failed after folding");
+        std::ifstream folded_file(path, std::ios::binary);
+        std::vector<uint32_t> folded;
+        Check(life_demo::ReadTiledState(folded_file, folded, saved_error) && folded == saved,
+              "Folding or rotation changed the simulation cells");
+      }
+      game.Game()->SetControlPixelSize(0);
+      game.Resize(640, 800);
+      // The same logical tap relative to the viewport centre must address the
+      // same cell on outer, dual, triple and rotated screens, even if density
+      // changes. Save/readback checks the actual input-to-render layout.
+      std::vector<uint32_t> folded_tap;
+      for (float density : {1.0f, 2.0f, 3.0f}) {
+        game.Game()->SetControlPixelSize(40 * density);
+        for (auto logical : {glm::ivec2{360, 780}, glm::ivec2{660, 780}, glm::ivec2{1000, 780}, glm::ivec2{780, 1000},
+                             glm::ivec2{360, 780}}) {
+          {  // Restore exactly the same world before each tap.
+            std::ofstream original(path, std::ios::binary);
+            Check(life_demo::WriteTiledState(original, saved, saved_error), "Cannot prepare fold test world");
+          }
+          window->SendKey(GLFW_KEY_O, GLFW_PRESS, GLFW_MOD_CONTROL);
+          window->SendKey(GLFW_KEY_O, GLFW_RELEASE, GLFW_MOD_CONTROL);
+          Settle(game);
+          Check(game.Game()->CompleteFile(path.string()).empty(), "Cannot restore fold test world");
+          const auto pixels = glm::ivec2(glm::vec2(logical) * density);
+          game.Resize(pixels.x, pixels.y);
+          game.Render();
+          // The desktop fallback reserves an extra 20 logical pixels at
+          // the top in portrait, shifting the canvas centre down by 10.
+          const float centre_offset = logical.x < logical.y ? 10.0f : 0.0f;
+          window->SendPointer(pixels.x * .5 + 37 * density, pixels.y * .5 + (23 + centre_offset) * density);
+          window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
+          window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
+          game.Render();
+          window->SendKey(GLFW_KEY_S, GLFW_PRESS, GLFW_MOD_CONTROL);
+          window->SendKey(GLFW_KEY_S, GLFW_RELEASE, GLFW_MOD_CONTROL);
+          Settle(game);
+          Check(game.Game()->CompleteFile(path.string()).empty(), "Cannot save fold test tap");
+          std::ifstream tapped_file(path, std::ios::binary);
+          std::vector<uint32_t> tapped;
+          Check(life_demo::ReadTiledState(tapped_file, tapped, saved_error), "Cannot read fold test tap");
+          Check(tapped != saved, "Fold test tap did not edit a cell");
+          if (folded_tap.empty())
+            folded_tap = tapped;
+          Check(tapped == folded_tap, "Folding or density change altered logical cell size");
+        }
+      }
+      game.Game()->SetControlPixelSize(0);
+      game.Resize(640, 800);
+      std::cout << "PASS fold grid: stable cell scale across sizes, rotations and densities\n";
+      std::filesystem::remove(path);
       game.Game()->EnableNativeSizeControls();
-      auto tapSize = [&](double x, double y) {
+      Check(game.Game()->SizeControlBounds(1) == glm::vec4(0) && game.Game()->SizeControlBounds(2) == glm::vec4(0),
+            "Removed size controls still have hit regions");
+      Check(game.Game()->TakeSizeControlRequest().x == 0, "Removed size controls requested a popup");
+      Settle(game);
+      // Clear the world and fit all 16384 cells along each axis into the viewport.
+      auto tap = [&](double x, double y) {
+        window->CursorEnterEvent().InvokeCallbacks(true);
         window->SendPointer(x, y);
         window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
         window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
-        return game.Game()->TakeSizeControlRequest();
+        leave();
       };
-      Check(tapSize(350, 716) == glm::ivec2(1, 64), "Tapping native width control changed its value");
-      Check(game.Game()->TakeSizeControlRequest().x == 0, "Size popup request was delivered twice");
-      game.Game()->SetGridDimension(1, 137);
-      game.Render();
-      Check(tapSize(250, 716) == glm::ivec2(1, 137), "Native size selection was not retained");
-      window->SendPointer(230, 716);
-      window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
-      window->SendPointer(320, 716);
-      window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
-      Check(game.Game()->TakeSizeControlRequest().x == 0, "Dragging the readout opened a popup");
-      Check(tapSize(250, 716) == glm::ivec2(1, 137), "Dragging the native readout changed grid width");
-      Check(tapSize(250, 752) == glm::ivec2(2, 64), "Height control opened the wrong dimension");
-      game.Game()->SetGridDimension(1, 400);
-      game.Game()->SetGridDimension(2, 1);
-      game.Render();
-      Check(tapSize(250, 716) == glm::ivec2(1, 256) && tapSize(250, 752) == glm::ivec2(2, 2),
-            "Native grid sizes escaped the supported range");
-      game.Game()->SetGridDimension(1, 64);
-      game.Game()->SetGridDimension(2, 64);
-      game.Render();
+      const auto session_path = std::filesystem::temp_directory_path() / "gol-session-test.gol";
+      auto snapshot = [&] {
+        Check(game.Game()->SaveSession(session_path.string()).empty(), "Session checkpoint failed");
+        std::ifstream input(session_path, std::ios::binary);
+        std::vector<uint32_t> cells;
+        std::string error;
+        Check(life_demo::ReadTiledState(input, cells, error), "Session checkpoint is invalid");
+        return cells;
+      };
+      const auto original = snapshot();
+      tap(64, 96);
+      Check(game.Game()->ConfirmationRequest() == 1, "Reset did not request confirmation");
+      Check(snapshot() == original, "Reset changed cells before confirmation");
+      game.Game()->CompleteConfirmation(false);
+      Check(snapshot() == original, "Cancel reset changed cells");
+      tap(576, 96);
+      Check(game.Game()->ConfirmationRequest() == 2, "Randomize did not request confirmation");
+      game.Game()->CompleteConfirmation(false);
+      Check(snapshot() == original, "Cancel randomize changed cells");
+      {
+        DemoSession restored(argv[1]);
+        Check(restored.Game()->RestoreSession(session_path.string()).empty(), "Session restore failed");
+        const auto copy = session_path.string() + ".copy";
+        Check(restored.Game()->SaveSession(copy).empty(), "Restored session checkpoint failed");
+        std::ifstream input(copy, std::ios::binary);
+        std::vector<uint32_t> cells;
+        std::string error;
+        Check(life_demo::ReadTiledState(input, cells, error) && cells == original, "Restart changed canvas cells");
+        Check(!restored.Game()->SaveSession(copy + "/missing/file").empty(), "Failed checkpoint reported success");
+        std::filesystem::remove(copy);
+      }
+      tap(64, 96);
+      game.Game()->CompleteConfirmation(true);
+      const auto empty = snapshot();
+      Check(std::all_of(empty.begin(), empty.end(), [](auto word) { return word == 0; }),
+            "Confirmed reset did not clear canvas");
+      std::filesystem::remove(session_path);
+      std::cout << "PASS confirmation and session restart: exact cells, canceled actions, atomic checkpoint failure\n";
+      window->MagnifyEvent().InvokeCallbacks(
+          grassland::rhi::MagnifyGesture{1.0e-6, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
+      Settle(game);
+      auto overview = Pixels(game);
+      auto same_grid = [](const auto &a, const auto &b) {
+        for (int y = 150; y < 650; ++y)
+          for (int x = 8; x < 632; ++x)
+            for (int c = 0; c < 4; ++c)
+              if (a[(y * 640 + x) * 4 + c] != b[(y * 640 + x) * 4 + c])
+                return false;
+        return true;
+      };
+      auto centre = (400 * 640 + 320) * 4;
+      Check(overview[centre] >= 44 && overview[centre] <= 52, "Empty overview is not population shaded");
+      window->MagnifyEvent().InvokeCallbacks(
+          grassland::rhi::MagnifyGesture{0.5, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
+      Settle(game);
+      Check(same_grid(Pixels(game), overview), "Overview zoom went below the full-world fit limit");
+      tap(576, 96);
+      game.Game()->CompleteConfirmation(true);
+      Settle(game);
+      auto random_overview = Pixels(game);
+      Check(random_overview[centre] > 72 && random_overview[centre] < 102,
+            "Random overview did not average live/dead coverage through mipmaps");
+      window->MagnifyEvent().InvokeCallbacks(
+          grassland::rhi::MagnifyGesture{1.0e6, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
+      Settle(game);
+      auto maximum = Pixels(game);
+      window->MagnifyEvent().InvokeCallbacks(
+          grassland::rhi::MagnifyGesture{2, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
+      Settle(game);
+      Check(same_grid(Pixels(game), maximum), "Maximum zoom did not retain its clamp");
       // File feedback can last over a second; all animations must eventually sleep.
       for (int i = 0; i < 150 && std::isfinite(game.Game()->NextFrameDelay()); ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
@@ -197,9 +394,73 @@ int main(int argc, char **argv) {
       window->SendFocus(true);
       game.Resize(800, 480);
       Settle(game);
-      Check(game.Image()->Extent().width == 800 && game.Image()->Extent().height == 480,
+      Check(game.Image()->GetDesc().width == 800 && game.Image()->GetDesc().height == 480,
             "Shared UI orientation resize failed");
       std::cout << "PASS gol shared desktop renderer, input, animation, focus and orientation\n";
+    }
+    {
+      DemoSession game(argv[1]);
+      game.Game()->SetControlPixelSize(40);
+      game.Game()->SetCutoutInsets(0, .12f, 0);
+      game.Game()->SetControlOcclusions({});
+      game.Resize(640, 800);
+      Settle(game);
+      auto before = Pixels(game);
+      game.Game()->SetControlOcclusions({{.85f, 0, .15f, .18f}});
+      Settle(game);
+      auto after = Pixels(game);
+      auto same_pixel = [](const auto &a, const auto &b, int width, int x, int y) {
+        const size_t offset = (size_t(y) * width + x) * 4;
+        return std::equal(a.begin() + offset, a.begin() + offset + 4, b.begin() + offset);
+      };
+      Check(same_pixel(before, after, 640, 40, 40), "Corner cutout moved the opposite top action");
+      Check(!same_pixel(before, after, 640, 600, 40) && !same_pixel(before, after, 640, 524, 40),
+            "Portrait corner cutout did not move randomize horizontally");
+      for (int y = 100; y < 700; ++y)
+        for (int x = 80; x < 560; ++x)
+          Check(same_pixel(before, after, 640, x, y), "Corner cutout shifted the entire board");
+      game.Game()->SetControlOcclusions({});
+      game.Resize(800, 640);
+      Settle(game);
+      before = Pixels(game);
+      game.Game()->SetControlOcclusions({{.85f, 0, .15f, .18f}});
+      Settle(game);
+      after = Pixels(game);
+      Check(!same_pixel(before, after, 800, 760, 40) && !same_pixel(before, after, 800, 760, 135),
+            "Landscape corner cutout did not move its action vertically");
+      Check(same_pixel(before, after, 800, 40, 40), "Landscape cutout shifted the opposite rail");
+      std::cout << "PASS local camera avoidance preserves the board and opposite controls\n";
+    }
+    {
+      // Foldable surfaces change size without changing their pixel density.
+      life_demo::GameOfLife life("fold layout", 360, 780, 64, 64, grassland::rhi::BACKEND_API_METAL, true);
+      life.InitializeHosted();
+      life.EnableNativeSizeControls();
+      for (float density : {1.0f, 2.0f, 3.0f}) {
+        life.SetControlPixelSize(40.0f * density);
+        for (auto size : {glm::ivec2{360, 780}, glm::ivec2{660, 780}, glm::ivec2{1000, 780}, glm::ivec2{780, 1000},
+                          glm::ivec2{466, 678}, glm::ivec2{678, 466}, glm::ivec2{669, 951}, glm::ivec2{951, 669},
+                          glm::ivec2{466, 678}}) {
+          auto pixels = glm::ivec2(glm::vec2(size) * density);
+          life.HostedInput()->UpdateHostedSize(pixels, pixels);
+          life.RenderHostedFrame();
+          const auto bounds = life.SizeControlBounds(1);
+          const auto extent = glm::vec2(bounds.z - bounds.x, bounds.w - bounds.y) * glm::vec2(pixels);
+          Check(std::abs(std::min(extent.x, extent.y) / density - 17.0f) < 0.01f,
+                "Folding changed density-independent control thickness");
+          Check(bounds.x >= 0 && bounds.y >= 0 && bounds.z <= 1 && bounds.w <= 1,
+                "Fold layout placed controls outside the surface");
+          const auto centre = glm::vec2(bounds.x + bounds.z, bounds.y + bounds.w) * 0.5f * glm::vec2(pixels);
+          auto *window = life.HostedInput();
+          window->SendPointer(centre.x, centre.y);
+          window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
+          window->SendMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
+          Check(life.TakeSizeControlRequest() == glm::ivec2(1, 64),
+                "Fold/rotation broke control hit testing or grid state");
+        }
+      }
+      life.CloseHosted();
+      std::cout << "PASS fold layout: stable vp sizing and hit testing across extents and densities\n";
     }
   } catch (const std::exception &e) {
     std::cerr << e.what() << '\n';
