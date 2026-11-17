@@ -297,15 +297,21 @@ struct AgentActivity: Identifiable {
       guard execution["ok"] as? Bool == true, let value=execution["value"] as? [String:Any] else {
         return String(decoding:try JSONSerialization.data(withJSONObject:execution),as:UTF8.self)
       }
-      var saves:[String]=[]
+      var saves:[Any]=[]
+      var allSaved=true
       if let templates=value["templates"] as? [[String:Any]] {
         guard templates.count <= 64 else { throw AgentFailure.truncated }
         for template in templates {
           try Task.checkCancellation()
-          saves.append(try await native(["action":"template_save","name":template["name"] as? String ?? "","rle":template["rle"] as? String ?? ""]))
+          let raw=try await native(["action":"template_save","name":template["name"] as? String ?? "","rle":template["rle"] as? String ?? ""])
+          let saved=(try? JSONSerialization.jsonObject(with:Data(raw.utf8))) as? [String:Any] ?? ["ok":false,"error":"invalid_native_response"]
+          allSaved = allSaved && (saved["ok"] as? Bool == true)
+          saves.append(saved)
         }
       }
-      let response:[String:Any] = ["ok":true,"result":value["result"] ?? NSNull(),"template_results":saves]
+      var summary=value
+      summary.removeValue(forKey:"templates")
+      let response:[String:Any] = ["ok":allSaved,"result":value["result"] ?? summary,"template_results":saves]
       let data=try JSONSerialization.data(withJSONObject:response)
       guard data.count <= 48000 else { throw AgentFailure.truncated }
       return String(decoding:data,as:UTF8.self)
