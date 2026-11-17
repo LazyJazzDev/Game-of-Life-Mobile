@@ -6,6 +6,9 @@ export default class EntryAbility extends UIAbility {
   private captureLanguage: string = '';
   onCreate(want: Want): void {
     // Explicit capture arguments only; ordinary launches never seed a board.
+    const agentPrompt = want.parameters?.['agentSmoke'];
+    AppStorage.setOrCreate('agentSmoke', this.context.applicationInfo.debug && typeof agentPrompt === 'string' ? agentPrompt : '');
+    AppStorage.setOrCreate('agentForeground', true);
     const pattern = want.parameters?.['capturePattern'];
     const zoom = want.parameters?.['captureZoom'];
     const panel = want.parameters?.['capturePanel'];
@@ -40,8 +43,9 @@ export default class EntryAbility extends UIAbility {
     }
   }
   onForeground(): void {
+    AppStorage.setOrCreate('agentForeground', true);
     AppStorage.setOrCreate('privacyForeground', Date.now());
     if (AppStorage.get<boolean>('privacyNativeReady')) native.command('{"type":"active","value":true}'); }
-  onBackground(): void { if (AppStorage.get<boolean>('privacyNativeReady')) native.background(); }
+  onBackground(): void { AppStorage.setOrCreate('agentForeground', false); if (AppStorage.get<boolean>('privacyNativeReady')) native.background(); }
   onWindowStageDestroy(): void { if (AppStorage.get<boolean>('privacyNativeReady')) native.command('{"type":"stop"}'); }
 }

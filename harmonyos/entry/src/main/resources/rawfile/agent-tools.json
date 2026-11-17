@@ -1,0 +1,190 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "canvas_state",
+      "description": "Read current canvas state. Coordinates have center origin, x right and y down.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "canvas_control",
+      "description": "Control the live canvas. play value 1 starts, 0 pauses; speed value 0/1/2/3 is 2/4/10/60 generations per second; boundary value 1 wraps, 0 fixes; view value is zoom and x/y is center; step advances exactly 1..64 generations and pauses. reset/randomize request user confirmation and do not report completion until confirmed.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "play",
+              "speed",
+              "boundary",
+              "view",
+              "step",
+              "reset",
+              "randomize"
+            ]
+          },
+          "value": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 64
+          },
+          "x": {
+            "type": "number",
+            "minimum": -8192,
+            "maximum": 8191
+          },
+          "y": {
+            "type": "number",
+            "minimum": -8192,
+            "maximum": 8191
+          }
+        },
+        "required": [
+          "action",
+          "value",
+          "x",
+          "y"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "canvas_read",
+      "description": "Read a region up to 64x64. Returns live coordinates only.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "integer",
+            "minimum": -8192,
+            "maximum": 8191
+          },
+          "y": {
+            "type": "integer",
+            "minimum": -8192,
+            "maximum": 8191
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "canvas_edit",
+      "description": "Set at most 4096 cells explicitly; pauses simulation. Each cell is [x,y,state] where state is 0 dead or 1 alive. Does not clear other cells.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cells": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "required": [
+          "cells"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pattern_search",
+      "description": "Search the local Life Lexicon pattern catalog by English name or category; returns up to 12 matches.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Name fragment, e.g. glider, Gosper, spaceship or oscillator"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pattern_place",
+      "description": "Place one catalog pattern by exact name, centered on x,y. Pauses simulation. Existing cells outside its rectangle stay unchanged.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Exact catalog name"
+          },
+          "x": {
+            "type": "integer",
+            "minimum": -8192,
+            "maximum": 8191
+          },
+          "y": {
+            "type": "integer",
+            "minimum": -8192,
+            "maximum": 8191
+          }
+        },
+        "required": [
+          "name",
+          "x",
+          "y"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "knowledge_sources",
+      "description": "Return curated Life research links, including metapixels. Links are references, not fetched page content.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  }
+]

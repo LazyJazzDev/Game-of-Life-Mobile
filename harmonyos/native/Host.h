@@ -44,6 +44,8 @@ class Host {
   std::thread thread_;
   bool quit_ = false;
   std::string status_ = "{}";
+  std::string agent_reply_;
+  int agent_id_ = 0;
   std::unique_ptr<DesktopGameSession> game_;
   std::unique_ptr<Surface> surface_;
   OHNativeWindow *window_ = nullptr;

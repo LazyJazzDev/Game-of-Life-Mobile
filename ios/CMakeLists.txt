@@ -86,6 +86,8 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
   add_executable(gol_tiled_storage_check tests/tiled_storage_check.cpp)
   target_link_libraries(gol_tiled_storage_check PRIVATE gol_ui)
   target_include_directories(gol_tiled_storage_check PRIVATE "${ROOT}/demo/gol")
+  add_executable(gol_agent_check tests/agent_check.cpp)
+  target_link_libraries(gol_agent_check PRIVATE gol_host)
   add_executable(gol_games_check tests/games_check.cpp)
   target_link_libraries(gol_games_check PRIVATE gol_host)
   target_include_directories(gol_games_check PRIVATE "${ROOT}/demo/gol" "${ROOT}/demo/gol/game_of_life_lib")
@@ -114,8 +116,9 @@ if(GOL_APP AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
   set(bundle_resources "${CMAKE_CURRENT_BINARY_DIR}/${target}-bundle/GameResources")
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${target}-bundle")
   file(CREATE_LINK "${GAME_OF_LIFE_RESOURCES}" "${bundle_resources}" SYMBOLIC)
-  add_executable(${target} MACOSX_BUNDLE gol/GameOfLifeApp.swift games/GamesView.swift
+  add_executable(${target} MACOSX_BUNDLE gol/GameOfLifeApp.swift games/GamesView.swift agent/LifeAgent.swift "${CMAKE_CURRENT_SOURCE_DIR}/../mobile/agent-tools.json"
     demos/DemoBridge.mm demos/DemoBridge.h GameBridge.h RenderQueue.h "${bundle_resources}" ${assets} ${strings})
+  set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../mobile/agent-tools.json" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
   set_source_files_properties("${bundle_resources}" ${assets} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
   # An Icon Composer icon: layered Liquid Glass on iOS 26, flat renderings before.
   set_source_files_properties(${assets} PROPERTIES XCODE_EXPLICIT_FILE_TYPE folder.iconcomposer.icon)
@@ -130,7 +133,7 @@ if(GOL_APP AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${GAME_OF_LIFE_RESOURCES}" "$<TARGET_BUNDLE_DIR:${target}>/GameResources"
     VERBATIM)
   add_dependencies(${target} ${target}_resources)
-  target_link_libraries(${target} PRIVATE gol_host "-framework SwiftUI" "-framework CoreGraphics" "-framework MetalKit")
+  target_link_libraries(${target} PRIVATE gol_host "-framework Security" "-framework SwiftUI" "-framework CoreGraphics" "-framework MetalKit")
   target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
   set_target_properties(${target} PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/gol/Info.plist"

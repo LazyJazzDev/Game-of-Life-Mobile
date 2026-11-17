@@ -11,6 +11,7 @@ class DesktopGameSession {
  public:
   explicit DesktopGameSession(grassland::rhi::BackendAPI backend = grassland::rhi::BACKEND_API_DEFAULT);
   ~DesktopGameSession();
+  std::string AgentCommand(const std::string &json);
   void Render();
   bool WaitGPU();
   grassland::rhi::IQueue *Queue() const;

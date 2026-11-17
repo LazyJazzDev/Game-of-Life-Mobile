@@ -7,6 +7,7 @@ const methods = source.slice(source.indexOf('  private checkPrivacy()'), source.
 const output = ts.transpileModule(`class Harness {
  pageAlive = true; privacyObserved = true; privacyRequested = false;
  privacyBusy = false; privacyAgreed = false; privacyError = ''; starts = 0; exits = 0;
+ agent = {cancel() {}};
  privacy: any;
  text(key: string) { return key; }
  startGame() { this.starts++; }

@@ -23,3 +23,6 @@ harmonyos/.clang-tidy
 harmonyos/.clangd
 # DevEco signing material written under the project by mistake; never commit
 harmonyos/Users/
+
+# Local AI provider credentials
+tools/*.key

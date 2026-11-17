@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 
+#include "../../mobile/AgentTools.h"
 #include "demo/gol/game_of_life_gui.h"
 
 DesktopGameSession::DesktopGameSession(grassland::rhi::BackendAPI backend) {
@@ -129,4 +130,8 @@ std::string DesktopGameSession::SaveSession(const std::string &path) {
 
 std::string DesktopGameSession::RestoreSession(const std::string &path) {
   return life_->RestoreSession(path);
+}
+
+std::string DesktopGameSession::AgentCommand(const std::string &json) {
+  return mobile_agent::Execute(*life_, json);
 }

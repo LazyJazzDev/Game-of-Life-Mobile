@@ -207,7 +207,11 @@ void Host::Execute(const std::string &json) {
   if (c.HasParseError() || !c.IsObject())
     throw std::runtime_error("Invalid native command");
   const auto type = Text(c, "type");
-  if (type == "active") {
+  if (type == "agent") {
+    agent_id_ = int(Number(c, "request"));
+    agent_reply_ = game_ ? game_->AgentCommand(Text(c, "payload")) : R"({"ok":false,"error":"canvas_not_ready"})";
+    dirty_ = true;
+  } else if (type == "active") {
     active_ = Boolean(c, "value");
     last_present_ = {};
     if (game_) {
@@ -366,6 +370,8 @@ void Host::Publish() {
   number("confirmationRequest", game_ ? game_->ConfirmationRequest() : 0);
   number("fileRequest", game_ ? game_->FileRequest() : 0);
   number("fileRevision", file_revision_);
+  number("agentId", agent_id_);
+  text("agentReply", agent_reply_);
   number("sizeAxis", size_axis_);
   number("sizeValue", size_value_);
   text("device", game_ ? game_->Device()->Name() : "");

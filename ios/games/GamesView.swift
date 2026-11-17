@@ -464,7 +464,7 @@ enum GameResources {
 }
 
 // A named pattern from the built-in Life Lexicon library (demo/gol/patterns/library.json).
-private struct BuiltinPattern: Decodable, Identifiable {
+struct BuiltinPattern: Decodable, Identifiable {
   let name: String
   let category: String
   let width: Int
@@ -759,6 +759,7 @@ private struct PatternLibraryView: View {
 }
 
 private struct DesktopGameView: UIViewRepresentable {
+  let agent: LifeAgent
   let active: Bool
   var status: (Double, String?) -> Void
   final class Coordinator: NSObject, UIDocumentPickerDelegate,
@@ -983,6 +984,7 @@ private struct DesktopGameView: UIViewRepresentable {
     let canvas = GameCanvasView(frame: .zero)
     let view = canvas.metal
     context.coordinator.view = view
+    agent.renderer = view.renderer
     context.coordinator.error = { status(0, $0) }
     view.renderer.confirmationRequest = { [weak coordinator = context.coordinator] action in
       coordinator?.confirmDestructiveAction(action)
@@ -1044,11 +1046,37 @@ private struct DesktopGameView: UIViewRepresentable {
 struct GamesView: View {
   @Environment(\.scenePhase) private var phase
   @State private var error: String?
+  @StateObject private var agent = LifeAgent()
+  @State private var agentVisible = false
   var body: some View {
-    DesktopGameView(active: phase == .active) { _, message in error = message }
+    DesktopGameView(agent: agent, active: phase == .active) { _, message in error = message }
       .ignoresSafeArea()
       .defersSystemGestures(on: .bottom)
       .background(.black)
+      .overlay(alignment: .bottom) {
+        GeometryReader { geometry in
+          VStack {
+            Spacer()
+            if agentVisible {
+              HStack { Spacer(); Button { agentVisible=false } label: { Image(systemName:"chevron.down").padding(10).background(.ultraThinMaterial,in:Circle()) } }
+              AgentPanel(agent:agent).frame(height:min(540,geometry.size.height*0.72))
+            } else {
+              if agent.busy { Text(agent.progress).font(.footnote).padding(10).background(.ultraThinMaterial,in:Capsule()) }
+              AgentLauncher(title:agent.text("让 Agent 帮你探索…","Explore with Agent…")) { agentVisible=true }
+                .frame(maxWidth:540).padding(.horizontal,24)
+            }
+          }.padding(.bottom,agentVisible ? 8 : 76).padding(.horizontal,agentVisible ? 8 : 0)
+        }
+      }
+      .onAppear {
+        #if targetEnvironment(simulator)
+          if let prompt=ProcessInfo.processInfo.environment["LONGMARCH_AGENT_SMOKE"] {
+            agentVisible=true; agent.consent=true
+            DispatchQueue.main.asyncAfter(deadline:.now()+3) { agent.send(prompt) }
+          }
+        #endif
+      }
+      .onChange(of:phase) { _,value in if value != .active { agent.cancel() } }
       .alert(
         "Game error", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })
       ) {

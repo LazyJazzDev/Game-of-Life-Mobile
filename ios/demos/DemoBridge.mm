@@ -32,6 +32,19 @@
   double _benchmarkSeconds, _benchmarkRenderSeconds, _benchmarkStart;
 }
 
+- (void)agentCommand:(NSString *)json completion:(void (^)(NSString *))completion {
+  std::string command = json.UTF8String;
+  dispatch_async(LongMarchRenderQueue(), ^{
+    std::string result =
+        _session ? _session->Game()->AgentCommand(command) : R"({"ok":false,"error":"canvas_not_ready"})";
+    NSString *reply = [NSString stringWithUTF8String:result.c_str()];
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self wakeGame];
+      completion(reply);
+    });
+  });
+}
+
 - (instancetype)init {
   if ((self = [super init])) {
     _generation = 0;

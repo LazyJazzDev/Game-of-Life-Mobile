@@ -1,3 +1,4 @@
+import { LifeAgent, AgentArgs, AgentLine } from '../agent/LifeAgent';
 import { common } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
@@ -82,6 +83,8 @@ class NativeStatus {
   fileRequest: number = 0;
   confirmationRequest: number = 0;
   fileRevision: number = 0;
+  agentId: number = 0;
+  agentReply: string = "";
   sizeAxis: number = 0;
   sizeValue: number = 64;
 }
@@ -131,6 +134,19 @@ class FileOperationError extends Error {
 @Entry
 @Component
 struct Index {
+  @StorageLink('agentForeground') @Watch('agentVisibilityChanged') private agentForeground: boolean = true;
+  private agentSmokeStarted: boolean = false;
+  private agent: LifeAgent = new LifeAgent();
+  @State private agentSettings: boolean = false;
+  @State private agentVisible: boolean = false;
+  @State private agentBusy: boolean = false;
+  @State private agentProgress: string = '';
+  @State private agentInput: string = '';
+  @State private agentKey: string = '';
+  @State private agentConsent: boolean = false;
+  @State private agentLines: AgentLine[] = [];
+  private agentSequence: number = 0;
+  private agentScroller: Scroller = new Scroller();
   private privacy: HostedPrivacy = new HostedPrivacy();
   private pageAlive: boolean = false;
   private privacyObserved: boolean = false;
@@ -185,6 +201,26 @@ struct Index {
 
   aboutToAppear(): void {
     this.pageAlive = true;
+    this.agent.zh = this.context().config.language?.startsWith('zh') ?? true;
+    this.agent.changed = () => {
+      if (this.agentSmokeStarted && !this.agent.busy) {
+        const f = fs.openSync(`${this.context().filesDir}/AgentSmoke.json`, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+        fs.writeSync(f.fd, JSON.stringify({ tools: this.agent.trace, messages: this.agent.lines })); fs.closeSync(f);
+      }
+      this.agentBusy = this.agent.busy; this.agentProgress = this.agent.progress;
+      this.agentLines = this.agent.lines.slice();
+      this.agentScroller.scrollEdge(Edge.Bottom);
+    };
+    if (this.context().applicationInfo.debug) {
+      try {
+        const keyFile = `${this.context().filesDir}/deepseek-api.key`;
+        this.agentKey = fs.readTextSync(keyFile).trim(); fs.unlinkSync(keyFile);
+      } catch (_) { }
+    }
+    this.agent.execute = (name: string, args: AgentArgs) => this.agentTool(name, args);
+    this.context().resourceManager.getRawFileContent('agent-tools.json').then((bytes: Uint8Array) => {
+      this.agent.tools = JSON.parse(String.fromCharCode(...bytes)) as Object[];
+    });
     // Subscribe before querying so agreement during startup cannot be missed.
     this.privacy.observe(() => this.checkPrivacy()).then(() => {
       if (!this.pageAlive) return;
@@ -203,6 +239,7 @@ struct Index {
         this.privacyAgreed = true;
         this.startGame();
       } else if (!agreed && this.privacyAgreed) {
+        this.agent.cancel();
         this.stopGame();
       }
       if (!agreed && !this.privacyRequested) this.requestPrivacy();
@@ -261,6 +298,7 @@ struct Index {
       this.win.off('windowSizeChange');
       this.win = undefined;
     }
+    this.agent.cancel();
     this.leave();
     this.privacyAgreed = false;
     AppStorage.setOrCreate('privacyNativeReady', false);
@@ -283,6 +321,11 @@ struct Index {
       const value = JSON.parse(native.status()) as NativeStatus;
       if (value.ready === undefined) return;
       this.stats = value;
+      const smoke = AppStorage.get<string>('agentSmoke') ?? '';
+      if (value.frames > 2 && smoke.length > 0 && !this.agentSmokeStarted && this.agentKey.length > 0) {
+        this.agentSmokeStarted = true; this.agentVisible = true; this.agentConsent = true;
+        this.agentInput = smoke; this.agentSend();
+      }
       if (value.confirmationRequest === 0) this.confirmationBusy = false;
       else if (!this.confirmationBusy) this.confirmDestructiveAction(value.confirmationRequest);
       if (value.ready && !this.opened) this.open();
@@ -310,6 +353,7 @@ struct Index {
     }, 250);
   }
   aboutToDisappear(): void {
+    this.agent.cancel();
     this.pageAlive = false;
     this.privacy.dispose();
     if (this.timer >= 0) clearInterval(this.timer);
@@ -863,6 +907,106 @@ struct Index {
     this.sendBottomInset();
   }
 
+  private agentVisibilityChanged(): void {
+    if (!this.agentForeground) this.agent.cancel();
+  }
+
+  private async agentNative(args: AgentArgs): Promise<string> {
+    const id = ++this.agentSequence;
+    native.command(JSON.stringify({ type: 'agent', request: id, payload: JSON.stringify(args) }));
+    for (let count = 0; count < 200; count++) {
+      await new Promise<void>((resolve: () => void) => { setTimeout(resolve, 50); });
+      const status = JSON.parse(native.status()) as NativeStatus;
+      if (status.agentId === id) return status.agentReply;
+      if (!this.pageAlive || !this.agent.busy) return '{"ok":false,"error":"cancelled"}';
+    }
+    return '{"ok":false,"error":"timeout_do_not_repeat_mutation"}';
+  }
+
+  private async agentTool(name: string, args: AgentArgs): Promise<string> {
+    if (!this.agentConsent || !this.privacyAgreed || !this.agent.busy) return '{"ok":false}';
+    if (name === 'knowledge_sources') return 'Life Lexicon: https://github.com/dvgrn/life-lexicon ; LifeWiki: https://conwaylife.com/wiki/Main_Page ; OTCA metapixel: https://conwaylife.com/wiki/OTCA_metapixel ; Golly: https://golly.sourceforge.io/ . References only, not fetched.';
+    if (name === 'pattern_search' || name === 'pattern_place') {
+      const catalog = JSON.parse(fs.readTextSync(`${this.stats.resources}/Patterns/library.json`)) as PatternDocument;
+      if (name === 'pattern_search') {
+        const query = (args.query ?? '').toLowerCase();
+        return JSON.stringify(catalog.patterns.filter((p: BuiltinPattern) => p.name.toLowerCase().includes(query) || p.category.includes(query)).slice(0, 12));
+      }
+      const p = catalog.patterns.find((p: BuiltinPattern) => p.name === args.name);
+      if (!p || p.width*p.height > 4096 || args.x === undefined || args.y === undefined) return '{"ok":false,"error":"invalid_pattern_or_position"}';
+      const lines = patternCells(p).split('\n').filter((line: string) => !line.startsWith('!'));
+      const cells: number[][] = [];
+      for (let y = 0; y < lines.length; y++) for (let x = 0; x < lines[y].length; x++) {
+        cells.push([args.x-Math.floor(p.width/2)+x, args.y-Math.floor(p.height/2)+y, lines[y][x] === 'O' ? 1 : 0]);
+      }
+      return this.agentNative({ action: 'edit', cells: cells });
+    }
+    if (name === 'canvas_state') return this.agentNative({ action: 'state' });
+    if (name === 'canvas_read') args.action = 'read';
+    else if (name === 'canvas_edit') args.action = 'edit';
+    else if (name !== 'canvas_control') return '{"ok":false,"error":"unknown_tool"}';
+    return this.agentNative(args);
+  }
+
+  private agentSend(): void {
+    if (!this.agentKey.trim() || !this.agentConsent) return;
+    this.agent.key = this.agentKey; this.agent.consent = this.agentConsent;
+    const input = this.agentInput; this.agentInput = '';
+    this.agent.send(input);
+  }
+
+  @Builder
+  private agentOverlay() {
+    Column({ space: 10 }) {
+      if (this.agentBusy) {
+        Row({ space: 8 }) {
+          LoadingProgress().width(18).height(18).color(TINT)
+          Text(this.agentProgress).fontSize(13).fontColor(LABEL)
+        }.padding(10).borderRadius(24).backgroundColor('#B32C2C2E').backdropBlur(20)
+      }
+      if (this.agentVisible) {
+        Column({ space: 10 }) {
+          Row() {
+            Text('Life Agent').fontSize(18).fontWeight(FontWeight.Medium).fontColor(LABEL)
+            Blank()
+            Button(this.agent.text('设置', 'Settings')).onClick(() => { this.agentSettings = !this.agentSettings; })
+            Button(this.agent.text('收起', 'Close')).onClick(() => { this.agentVisible = false; })
+          }.width('100%')
+          if (this.agentSettings || !this.agentConsent || !this.agentKey.length) {
+            TextInput({ placeholder: 'DeepSeek API Key', text: this.agentKey }).type(InputType.Password)
+              .onChange((value: string) => { this.agentKey = value; })
+            Row({ space: 8 }) {
+              Checkbox().select(this.agentConsent).onChange((value: boolean) => { this.agentConsent = value; if (!value) this.agent.cancel(); })
+              Text(this.agent.text('将消息与必要画布数据发送给 DeepSeek。密钥仅在本次会话内存中保存。', 'Send messages and necessary canvas data to DeepSeek. The key stays in memory for this session.'))
+                .fontSize(12).fontColor(SECONDARY).layoutWeight(1)
+            }
+          }
+          Scroll(this.agentScroller) {
+            Column({ space: 14 }) {
+              if (!this.agentLines.length) { Text(this.agent.text('试试：放置一艘滑翔机，运行四代。', 'Try placing a glider and advancing four generations.')).fontColor(SECONDARY) }
+              ForEach(this.agentLines, (line: AgentLine, index: number) => {
+                Column({ space: 4 }) {
+                  Text(line.role === 'user' ? this.agent.text('你', 'You') : 'Life Agent').fontSize(12).fontColor(SECONDARY)
+                  Text(line.text).fontSize(16).fontColor(LABEL).copyOption(CopyOptions.InApp)
+                }.width('100%').alignItems(HorizontalAlign.Start)
+              }, (line: AgentLine, index: number) => `${index}`)
+            }.width('100%').alignItems(HorizontalAlign.Start)
+          }.height(this.areaHeight > 500 ? 230 : 100).width('100%')
+          Row({ space: 8 }) {
+            TextInput({ placeholder: this.agent.text('描述你想探索的结构…', 'Describe your idea…'), text: this.agentInput })
+              .id('agent-message-input').layoutWeight(1).onChange((value: string) => { this.agentInput = value; }).onSubmit(() => this.agentSend())
+            if (this.agentBusy) { Button(this.agent.text('停止', 'Stop')).onClick(() => this.agent.cancel()) }
+            else { Button(this.agent.text('发送', 'Send')).enabled(this.agentConsent && this.agentKey.trim().length > 0 && this.agentInput.trim().length > 0).onClick(() => this.agentSend()) }
+          }
+        }.padding(16).width('100%').borderRadius(24).backgroundColor('#D91C1C1E').backdropBlur(24)
+      } else {
+        TextInput({ placeholder: this.agent.text('让 Agent 帮你探索…', 'Explore with Agent…') })
+          .height(48).borderRadius(24).backgroundColor('#A62C2C2E').backdropBlur(24)
+          .onClick(() => { this.agentVisible = true; setTimeout(() => { focusControl.requestFocus('agent-message-input'); }, 100); })
+      }
+    }.width('92%').constraintSize({ maxWidth: 560 }).position({ x: (this.areaWidth-Math.min(this.areaWidth*0.92,560))/2, y: this.agentVisible ? Math.max(20, this.areaHeight-480-this.safeBottom) : Math.max(20, this.areaHeight-130-this.safeBottom) })
+  }
+
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
       // The canvas fills the display; the page stays blank until resources are ready.
@@ -871,6 +1015,7 @@ struct Index {
           .width('100%').height('100%')
           .onAreaChange((oldArea: Area, area: Area) => this.canvasArea(area))
       }
+      if (this.privacyAgreed && this.opened) { this.agentOverlay() }
       if (!this.privacyAgreed && this.privacyError.length > 0) {
         Column({ space: 20 }) {
           Text($r('app.string.privacy_title')).fontSize(22).fontColor(LABEL)

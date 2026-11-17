@@ -31,6 +31,7 @@ typedef void (^DemoProgress)(double frameSeconds,
 - (void)setGameControlPixelSize:(float)pixels;
 - (void)setGameControlExtentLimit:(float)heightFraction;
 - (void)setActive:(BOOL)active;
+- (void)agentCommand:(NSString *)json completion:(void (^)(NSString *))completion;
 - (void)stop;
 @end
 NS_ASSUME_NONNULL_END
