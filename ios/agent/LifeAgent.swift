@@ -1,5 +1,4 @@
 import SwiftUI
-import Security
 
 struct AgentMessage: Identifiable {
   let id = UUID()
@@ -11,44 +10,22 @@ struct AgentMessage: Identifiable {
   @Published var messages: [AgentMessage] = []
   @Published var progress = ""
   @Published var busy = false
-  @Published var key = ""
+  private let key: String
   @Published var consent = false
   weak var renderer: DemoRenderer?
   private var task: Task<Void, Never>?
   private var history: [[String: Any]] = []
   private var generation = 0
   private var toolLog: [[String:Any]] = []
-  private let service = "net.lazyjazz.gameoflife.deepseek"
   private var chinese: Bool { Locale.preferredLanguages.first?.hasPrefix("zh") == true }
   func text(_ zh: String, _ en: String) -> String { chinese ? zh : en }
 
   init() {
-    let query: [String: Any] = [kSecClass as String:kSecClassGenericPassword,
-      kSecAttrService as String:service, kSecReturnData as String:true]
-    var item: CFTypeRef?
-    if SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-      let data = item as? Data { key = String(data:data,encoding:.utf8) ?? "" }
-    #if targetEnvironment(simulator)
-      // Local development provisioning only; never included in the application bundle.
-      let file = FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("deepseek-api.key")
-      if let value = try? String(contentsOf:file,encoding:.utf8) {
-        key = value.trimmingCharacters(in:.whitespacesAndNewlines)
-        _ = saveKey()
-        try? FileManager.default.removeItem(at:file)
-      }
-    #endif
+    let file = Bundle.main.url(forResource: "AgentCredential", withExtension: "key")
+    key = file.flatMap { try? String(contentsOf: $0, encoding: .utf8) }?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
-  @discardableResult func saveKey() -> Bool {
-    key = key.trimmingCharacters(in:.whitespacesAndNewlines)
-    let query: [String:Any] = [kSecClass as String:kSecClassGenericPassword,kSecAttrService as String:service]
-    SecItemDelete(query as CFDictionary)
-    guard !key.isEmpty else { return true }
-    var entry=query
-    entry[kSecValueData as String]=Data(key.utf8)
-    entry[kSecAttrAccessible as String]=kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-    return SecItemAdd(entry as CFDictionary,nil) == errSecSuccess
-  }
+  var available: Bool { !key.isEmpty }
 
   func cancel() {
     generation += 1
@@ -90,15 +67,15 @@ struct AgentMessage: Identifiable {
 
   private func run(_ input: String) async throws {
     if history.isEmpty {
-      history=[["role":"system","content":"You are the Life Agent inside Conway's Game of Life (B3/S23). Help design and test structures using tools. Reply in the user's language. Do not claim actions without successful tool results. Use catalog patterns rather than inventing known layouts. For repeated or large structures, save RLE templates, compose named templates with repetition, and place the whole compound once. Template anchors are TOP-LEFT; pattern_place is CENTER. Inspect canvas_summary before writing and compare its population/hash with template_info after placement. Use canvas_fit to show a complete region; never guess a zoom. Enlarged drawings are not functioning metacells. Coordinates: center origin, x right, y down. Read before editing; never reset or randomize unless requested. Destructive actions require user confirmation. Preserve unrelated cells. One tool at a time. Step tests are finite observations, not proofs. The app has 16384x16384 cells; large metacells may not fit. Web links are references only. Keep replies concise. Stop after confirmation is requested and wait for the user."]]
+      history=[["role":"system","content":"You are the Life Agent inside Conway's Game of Life (B3/S23). Help design and test structures using tools. Reply in the user's language. Do not claim actions without successful tool results. No pattern catalog, built-in templates, metacell guide or structure generator is available. Create your own templates from explicit RLE using only the basic tools. knowledge_sources lists references, not retrieved content. Be honest about missing information and do not substitute an enlarged drawing for a functioning structure. For repeated or large structures, save RLE templates, compose named templates with repetition, and place the whole compound once. Template anchors are TOP-LEFT. Inspect canvas_summary before writing and compare its population/hash with template_info after placement. Use canvas_fit to show a complete region; never guess a zoom. Enlarged drawings are not functioning metacells. Coordinates: center origin, x right, y down. Read before editing; never reset or randomize unless requested. Destructive actions require user confirmation. Preserve unrelated cells. One tool at a time. Step tests are finite observations, not proofs. The app has 16384x16384 cells; large metacells may not fit. Web links are references only. Keep replies concise. Stop after confirmation is requested and wait for the user."]]
     }
     history.append(["role":"user","content":input])
     let url=Bundle.main.url(forResource:"agent-tools",withExtension:"json")!
     let tools=try JSONSerialization.jsonObject(with:Data(contentsOf:url))
     var toolCount=0
-    for round in 0..<10 {
+    for round in 0..<64 {
       try Task.checkCancellation()
-      progress=text("正在思考", "Thinking")+" · \(round+1)/10"
+      progress=text("正在思考", "Thinking")+" · \(round+1)/64"
       let response=try await completion(tools)
       try Task.checkCancellation()
       history.append(response)
@@ -108,7 +85,7 @@ struct AgentMessage: Identifiable {
       guard let calls=response["tool_calls"] as? [[String:Any]], !calls.isEmpty else { return }
       for call in calls {
         toolCount += 1
-        guard toolCount <= 24 else { throw AgentFailure.truncated }
+        guard toolCount <= 192 else { throw AgentFailure.truncated }
         try Task.checkCancellation()
         guard let id=call["id"] as? String, let function=call["function"] as? [String:Any],
           let name=function["name"] as? String, let raw=function["arguments"] as? String,
@@ -150,7 +127,7 @@ struct AgentMessage: Identifiable {
     let historySize=try JSONSerialization.data(withJSONObject:history).count
     guard historySize <= 512*1024 else { history=[];throw AgentFailure.truncated }
     request.httpBody=try JSONSerialization.data(withJSONObject:["model":"deepseek-flash","messages":history,"tools":tools,
-      "thinking":["type":"enabled"],"reasoning_effort":"high","max_tokens":4096,"stream":true])
+      "thinking":["type":"enabled"],"reasoning_effort":"high","max_tokens":16384,"stream":true])
     let (bytes,response)=try await URLSession.shared.bytes(for:request)
     guard let http=response as? HTTPURLResponse, http.statusCode==200 else {
       throw AgentFailure.http((response as? HTTPURLResponse)?.statusCode ?? 0)
@@ -201,23 +178,8 @@ struct AgentMessage: Identifiable {
 
   private func execute(_ name:String,_ args:[String:Any]) async throws -> String {
     if name=="knowledge_sources" {
-      return "Life Lexicon: https://github.com/dvgrn/life-lexicon ; LifeWiki: https://conwaylife.com/wiki/Main_Page ; metapixels: https://conwaylife.com/wiki/OTCA_metapixel ; Golly: https://golly.sourceforge.io/ . These links have not been fetched."
-    }
-    if name=="pattern_search" {
-      let query=(args["query"] as? String ?? "").lowercased()
-      let matches=BuiltinPattern.all.filter { $0.name.lowercased().contains(query) || $0.category.lowercased().contains(query) }.prefix(12)
-      let rows=matches.map { ["name":$0.name,"width":$0.width,"height":$0.height,"category":$0.category] as [String:Any] }
-      return String(decoding:try JSONSerialization.data(withJSONObject:rows),as:UTF8.self)
-    }
-    if name=="pattern_place" {
-      guard let name=args["name"] as? String, let p=BuiltinPattern.all.first(where:{$0.name==name}),
-        let x=args["x"] as? Int, let y=args["y"] as? Int, x >= -8192,x <= 8191,y >= -8192,y <= 8191,p.width*p.height<=4096 else { throw AgentFailure.invalidResponse }
-      let lines=p.cells.components(separatedBy:"\n").filter{!$0.hasPrefix("!")}.prefix(p.height)
-      var cells:[[Int]]=[]
-      for (dy,row) in lines.enumerated() { for (dx,c) in row.enumerated() {
-        cells.append([x-p.width/2+dx,y-p.height/2+dy,c=="O" ? 1 : 0])
-      } }
-      return try await native(["action":"edit","cells":cells])
+      let url = Bundle.main.url(forResource: "knowledge-sources", withExtension: "json")!
+      return try String(contentsOf: url, encoding: .utf8)
     }
     var payload=args
     switch name {
@@ -227,7 +189,7 @@ struct AgentMessage: Identifiable {
     case "canvas_edit":payload["action"]="edit"
     case "canvas_summary":payload["action"]="summary"
     case "canvas_fit":payload["action"]="fit"
-    case "metacell_guide","template_save","template_list","template_info","template_compose","template_place":payload["action"]=name
+    case "template_save","template_list","template_info","template_compose","template_place":payload["action"]=name
     default:throw AgentFailure.invalidResponse
     }
     return try await native(payload)
@@ -263,7 +225,7 @@ struct AgentPanel: View {
         HStack {
           Text("Life Agent").font(.headline)
           Spacer()
-          Button { settings.toggle() } label:{Image(systemName:"key")}.accessibilityLabel(agent.text("API 设置","API settings"))
+          Button { settings.toggle() } label:{Image(systemName:"hand.raised")}.accessibilityLabel(agent.text("数据使用设置","Data use settings"))
         }.padding()
         ScrollViewReader { reader in
           ScrollView {
@@ -287,21 +249,20 @@ struct AgentPanel: View {
               .accessibilityLabel(agent.text("停止","Stop"))
           } else {
             Button(action:send) { Image(systemName:"arrow.up.circle.fill").font(.title2) }
-              .disabled(input.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || agent.key.isEmpty || !agent.consent)
+              .disabled(input.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || !agent.available || !agent.consent)
               .accessibilityLabel(agent.text("发送","Send"))
           }
         }.padding()
       }.background(.regularMaterial,in:RoundedRectangle(cornerRadius:24))
     }.padding(12)
-      .onAppear { if agent.key.isEmpty || !agent.consent { settings=true } else { focused=true } }
+      .onAppear { if !agent.available || !agent.consent { settings=true } else { focused=true } }
       .sheet(isPresented:$settings) {
         NavigationStack {
           Form {
-            SecureField("DeepSeek API Key",text:$agent.key).textInputAutocapitalization(.never).autocorrectionDisabled()
             Toggle(agent.text("允许将消息及必要的画布数据发送给 DeepSeek","Allow sending messages and necessary canvas data to DeepSeek"),isOn:$agent.consent)
-            Text(agent.text("仅在使用助手时联网。密钥保存在本机钥匙串；不会上传完整画布。","Only the assistant uses the network. Your key stays in this device's Keychain; the full canvas is not uploaded.")).font(.footnote)
+            Text(agent.text("仅在使用助手时联网，使用应用配置的 DeepSeek 服务；不会上传完整画布。","Only the assistant uses the configured DeepSeek service. The full canvas is not uploaded.")).font(.footnote)
           }.navigationTitle(agent.text("助手设置","Agent settings"))
-            .toolbar { Button(agent.text("完成","Done")) { if agent.saveKey() { settings=false } } }
+            .toolbar { Button(agent.text("完成","Done")) { settings=false } }
         }.presentationDetents([.medium])
       }
   }

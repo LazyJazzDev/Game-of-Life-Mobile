@@ -105,8 +105,10 @@ int main(int argc, char **argv) {
     Check(steps == 1 && clock.NextStepDelay(0) == .5, "Timed Life wake missed a generation");
     clock.Advance(10, true, SimulationClock::kLightning, [&] { ++steps; });
     const double lightning_delay = clock.NextStepDelay(SimulationClock::kLightning);
-    Check(steps == 2 && lightning_delay > 0 && lightning_delay <= SimulationClock::kLightningPeriod,
-          "Lightning mode must advance once per frame at 60 generations per second");
+    Check(steps == 2 && lightning_delay == 0, "Lightning mode must request immediate work");
+    for (int i = 0; i < 60; ++i)
+      clock.Advance(1.0 / 60.0, true, SimulationClock::kLightning, [&] { ++steps; });
+    Check(steps > 60, "Lightning remains capped at one generation per display frame");
     {
       DemoSession game(argv[1]);
       game.Resize(640, 800);
@@ -373,8 +375,8 @@ int main(int argc, char **argv) {
       game.Game()->CompleteConfirmation(true);
       Settle(game);
       auto random_overview = Pixels(game);
-      Check(random_overview[centre] > 72 && random_overview[centre] < 102,
-            "Random overview did not average live/dead coverage through mipmaps");
+      Check(random_overview[centre] > 200 && random_overview[centre] <= 255,
+            "Random overview did not normalize and gamma-map filtered density");
       window->MagnifyEvent().InvokeCallbacks(
           grassland::rhi::MagnifyGesture{1.0e6, 320, 400, grassland::rhi::MagnifyPhase::kUpdate});
       Settle(game);

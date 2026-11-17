@@ -79,7 +79,7 @@
   view.device = MTLCreateSystemDefaultDevice();
   view.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
   view.framebufferOnly = YES;
-  view.preferredFramesPerSecond = 60;
+  view.preferredFramesPerSecond = UIScreen.mainScreen.maximumFramesPerSecond;
   view.delegate = self;
   // Frames are scheduled on demand (scheduleGameFrame:), not by a running display link.
   view.paused = YES;
@@ -521,7 +521,7 @@
           if (!failure) {
             bool inputPending = inputRevision != self->_inputRevision;
             self->_gameSleeping = !inputPending && !std::isfinite(nextFrameDelay);
-            double delay = inputPending ? 0 : std::max(1.0 / 60.0, nextFrameDelay) - seconds;
+            double delay = inputPending ? 0 : nextFrameDelay - seconds;
             [self scheduleGameFrame:delay];
             if (self->_gameSleeping && self->_idleSmokeStage < 2 &&
                 NSProcessInfo.processInfo.environment[@"LONGMARCH_SMOKE_IDLE"]) {

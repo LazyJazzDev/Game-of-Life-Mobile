@@ -10,7 +10,10 @@
 #include "demo/gol/game_of_life_gui.h"
 
 namespace mobile_agent {
-inline std::string Execute(life_demo::GameOfLife &game, const std::string &input, TemplateStore *templates = nullptr) {
+inline std::string Execute(life_demo::GameOfLife &game,
+                           const std::string &input,
+                           TemplateStore *templates = nullptr,
+                           bool allow_preset_guides = true) {
   rapidjson::Document d;
   if (input.size() > 2 * 1024 * 1024)
     return R"({"ok":false,"error":"request_too_large"})";
@@ -25,7 +28,7 @@ inline std::string Execute(life_demo::GameOfLife &game, const std::string &input
   };
   std::string action = d["action"].GetString();
   if (action == "metacell_guide")
-    return kMetacellGuide;
+    return allow_preset_guides ? kMetacellGuide : R"({"ok":false,"error":"unsupported_action"})";
   if (action.rfind("template_", 0) == 0) {
     if (!templates)
       return R"({"ok":false,"error":"template_store_unavailable"})";

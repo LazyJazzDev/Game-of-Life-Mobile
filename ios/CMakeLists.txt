@@ -118,10 +118,17 @@ if(GOL_APP AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
   set(bundle_resources "${CMAKE_CURRENT_BINARY_DIR}/${target}-bundle/GameResources")
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${target}-bundle")
   file(CREATE_LINK "${GAME_OF_LIFE_RESOURCES}" "${bundle_resources}" SYMBOLIC)
-  add_executable(${target} MACOSX_BUNDLE gol/GameOfLifeApp.swift games/GamesView.swift agent/LifeAgent.swift "${CMAKE_CURRENT_SOURCE_DIR}/../mobile/agent-tools.json"
-    demos/DemoBridge.mm demos/DemoBridge.h GameBridge.h RenderQueue.h "${bundle_resources}" "${CMAKE_CURRENT_SOURCE_DIR}/../mobile/AgentTemplates" ${assets} ${strings})
-  set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../mobile/agent-tools.json" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
-  set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../mobile/AgentTemplates" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+  # The configured credential is bundled, but never copied into tracked sources.
+  set(LIFE_AGENT_KEY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../tools/deepseek-api.key" CACHE FILEPATH "Local bundled Agent credential")
+  if(EXISTS "${LIFE_AGENT_KEY_FILE}")
+    configure_file("${LIFE_AGENT_KEY_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/AgentCredential.key" COPYONLY)
+  else()
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/AgentCredential.key" "")
+  endif()
+  add_executable(${target} MACOSX_BUNDLE gol/GameOfLifeApp.swift games/GamesView.swift agent/LifeAgent.swift "${CMAKE_CURRENT_SOURCE_DIR}/agent/agent-tools.json"
+    demos/DemoBridge.mm demos/DemoBridge.h GameBridge.h RenderQueue.h "${bundle_resources}" "${CMAKE_CURRENT_SOURCE_DIR}/agent/knowledge-sources.json" "${CMAKE_CURRENT_BINARY_DIR}/AgentCredential.key" ${assets} ${strings})
+  set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/agent/agent-tools.json" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+  set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/agent/knowledge-sources.json" "${CMAKE_CURRENT_BINARY_DIR}/AgentCredential.key" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
   set_source_files_properties("${bundle_resources}" ${assets} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
   # An Icon Composer icon: layered Liquid Glass on iOS 26, flat renderings before.
   set_source_files_properties(${assets} PROPERTIES XCODE_EXPLICIT_FILE_TYPE folder.iconcomposer.icon)
@@ -140,13 +147,22 @@ if(GOL_APP AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
   endif()
   add_custom_target(${target}_resources
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${GAME_OF_LIFE_RESOURCES}" "$<TARGET_BUNDLE_DIR:${target}>/GameResources"
+    COMMAND "${CMAKE_COMMAND}" -E rm -rf "$<TARGET_BUNDLE_DIR:${target}>/AgentTemplates" "$<TARGET_BUNDLE_DIR:${target}>/GameResources/AgentTemplates"
     DEPENDS ${bundle_copy_dependency}
     VERBATIM)
   add_dependencies(${target} ${target}_resources)
   target_link_libraries(${target} PRIVATE gol_host "-framework Security" "-framework SwiftUI" "-framework CoreGraphics" "-framework MetalKit")
   target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
+  set(gol_info_plist "${CMAKE_CURRENT_SOURCE_DIR}/gol/Info.plist")
+  if(NOT CMAKE_GENERATOR STREQUAL "Xcode")
+    file(READ "${gol_info_plist}" gol_info_text)
+    string(REPLACE "$(EXECUTABLE_NAME)" "${target}" gol_info_text "${gol_info_text}")
+    string(REPLACE "$(PRODUCT_BUNDLE_IDENTIFIER)" "${bundle_id}" gol_info_text "${gol_info_text}")
+    set(gol_info_plist "${CMAKE_CURRENT_BINARY_DIR}/GameOfLife-Info.plist")
+    file(WRITE "${gol_info_plist}" "${gol_info_text}")
+  endif()
   set_target_properties(${target} PROPERTIES
-    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/gol/Info.plist"
+    MACOSX_BUNDLE_INFO_PLIST "${gol_info_plist}"
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${bundle_id}"
     XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
     XCODE_ATTRIBUTE_SWIFT_OBJC_BRIDGING_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/GameBridge.h"

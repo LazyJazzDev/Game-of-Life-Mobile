@@ -71,6 +71,8 @@ int main(int argc, char **argv) {
   if (run(R"({"action":"summary","x":2000,"y":2000,"width":320,"height":160})") != summary)
     return 9;
   run(R"({"action":"template_place","name":"large","x":8100,"y":2000,"mode":"merge"})", false);
+  if (session.Game()->AgentCommand(R"({"action":"metacell_guide"})").find("unsupported_action") == std::string::npos)
+    return 42;
   session.Game()->SetAgentBuiltinDirectory(std::filesystem::path(__FILE__).parent_path().parent_path().parent_path() /
                                            "mobile/AgentTemplates");
   std::string parts = "[";
