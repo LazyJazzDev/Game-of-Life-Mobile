@@ -67,7 +67,10 @@ export class AgentResearch {
     const listing = JSON.parse(this.documents[result.document]) as RepositoryListing;
     const matches = listing.items.map((item: Repository): RepositoryMatch => ({ name: item.full_name, description: item.description ?? '',
       url: item.html_url, api_url: item.url, default_branch: item.default_branch }));
-    return JSON.stringify({ok: true, document: result.document, matches, total_count: listing.total_count, untrusted_source: true});
+    return JSON.stringify({ok: true, document: result.document, matches, total_count: listing.total_count, untrusted_source: true,
+      search_scope: 'GitHub repository metadata; query words are ANDed',
+      query_hint: matches.length ? 'Inspect discovered repositories with research_fetch; results are references, not verified implementations.' :
+        'No metadata match for all terms. Broaden to 2-3 keywords, remove format/feature constraints, or try synonyms. This is not evidence that no source exists.'});
   }
   find(query: string, document: string = ''): string {
     if (!query || query.length > 160) return '{"ok":false,"error":"invalid_query"}';

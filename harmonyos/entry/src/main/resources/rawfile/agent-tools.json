@@ -714,7 +714,7 @@
     "type": "function",
     "function": {
       "name": "research_search",
-      "description": "Discover public reference repositories on GitHub using a short keyword query. Returns repository titles, descriptions and API/HTML URLs; use research_fetch to inspect discovered sources. This searches repository metadata, not code contents or the whole web. Prefer looking for existing implementations and references before expensive blind experiments.",
+      "description": "Discover public reference repositories on GitHub using a short keyword query. Returns repository titles, descriptions and API/HTML URLs; use research_fetch to inspect discovered sources. This searches repository metadata, not code contents or the whole web. Prefer looking for existing implementations and references before expensive blind experiments. GitHub ANDs query terms: use 2–3 discriminative English keywords, not a sentence or a list of desired features. If zero results, remove optional words or search one concept at a time. Repository metadata may omit format names such as RLE; zero results do not prove no implementation exists.",
       "parameters": {
         "type": "object",
         "properties": {

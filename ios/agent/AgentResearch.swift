@@ -77,7 +77,9 @@ import WebKit
        "url":item["html_url"] as? String ?? "", "api_url":item["url"] as? String ?? "",
        "default_branch":item["default_branch"] as? String ?? ""]
     }
-    return ["ok":true,"document":id,"matches":matches,"total_count":listing["total_count"] as? Int ?? 0,"untrusted_source":true]
+    return ["ok":true,"document":id,"matches":matches,"total_count":listing["total_count"] as? Int ?? 0,"untrusted_source":true,
+      "search_scope":"GitHub repository metadata; query words are ANDed",
+      "query_hint":matches.isEmpty ? "No metadata match for all terms. Broaden to 2-3 keywords, remove format/feature constraints, or try synonyms. This is not evidence that no source exists." : "Inspect discovered repositories with research_fetch; results are references, not verified implementations."]
   }
 
   func read(_ id:String,_ offset:Int,_ length:Int) -> [String:Any] {

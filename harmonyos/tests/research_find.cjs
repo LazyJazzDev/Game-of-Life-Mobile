@@ -35,6 +35,9 @@ console.log('PASS retained-document search beyond excerpts, literal punctuation,
   assert.equal(found.matches[0].name,'example/reference');assert.equal(found.matches[0].description,'');
   assert.equal(found.total_count,1);assert.equal(found.document,'repo');assert.equal(found.untrusted_source,true);
   assert.equal(JSON.parse(await a.search('   ')).ok,false);
+  a.fetch=async()=>{a.documents.empty=JSON.stringify({total_count:0,items:[]});return '{"ok":true,"document":"empty"}';};
+  const empty=JSON.parse(await a.search('overly narrow query'));
+  assert.equal(empty.matches.length,0);assert.ok(empty.query_hint.includes('Broaden'));assert.ok(empty.search_scope.includes('ANDed'));
   a.fetch=async()=>'{"ok":false,"status":429}';
   assert.equal(JSON.parse(await a.search('logic')).status,429);
   console.log('PASS repository discovery, query encoding, compact metadata, retained source and HTTP failures');
