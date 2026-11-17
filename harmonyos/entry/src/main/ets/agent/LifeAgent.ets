@@ -3,6 +3,7 @@ import { util } from '@kit.ArkTS';
 
 export interface TemplatePart { name: string; x: number; y: number; rotation?: number; mirror?: number; columns?: number; rows?: number; dx?: number; dy?: number; }
 export interface AgentArgs {
+  work_brief?: string;
   url?: string; document?: string; offset?: number; length?: number; content?: string; code?: string; language?: string;
   rle?: string; parts?: TemplatePart[]; mode?: string;
   action?: string; value?: number; x?: number; y?: number;
@@ -54,10 +55,22 @@ export class LifeAgent {
   cancel(): void {
     const wasBusy = this.busy;
     this.epoch++; this.endStream?.(); this.endStream = undefined; this.cancelResearch();
+    if (this.liveResponse.trim()) this.lines.push({role: 'assistant', text: this.liveResponse});
     clearInterval(this.ticker); this.liveResponse = '';
     this.request?.destroy(); this.request = undefined;
     this.busy = false; this.history = [];
     if (wasBusy) this.progress = this.text('已停止', 'Stopped'); this.changed();
+  }
+  private updateBrief(value: string): void {
+    const sentence = value.trim().split(/[。！？!?\n]/)[0].trim();
+    if (sentence) this.progress = sentence.slice(0, 160);
+  }
+  private reportBrief(value: string): void {
+    const brief = value.trim();
+    this.updateBrief(brief);
+    const last = this.lines[this.lines.length-1];
+    if (!last || last.role !== 'assistant' || last.text.trim() !== brief) this.lines.push({role: 'assistant', text: brief});
+    this.changed();
   }
   private toolProgress(name: string, args: AgentArgs): string {
     if (name === 'research_fetch') return this.text('正在读取公开资料…', 'Reading public sources…');
@@ -85,7 +98,7 @@ export class LifeAgent {
   private activity(title: string): void {
     this.activities.push({ title: title, detail: '', started: Date.now(), finished: false, failed: false });
     if (this.activities.length > 12) this.activities.shift();
-    this.progress = title; this.changed();
+    this.changed();
   }
   private finishActivity(error: string = ''): void {
     const item = this.activities[this.activities.length-1];
@@ -127,8 +140,8 @@ export class LifeAgent {
           const delta = choice?.delta;
           if (choice?.finish_reason === 'length') { failure = 'response_truncated'; continue; }
           if (!delta) continue;
-          if (delta.reasoning_content) { reasoning += delta.reasoning_content; this.progress = this.text('正在分析结构与操作步骤…', 'Analyzing the structure and next steps…'); }
-          if (delta.content) { content += delta.content; this.liveResponse = content; this.progress = this.text('正在整理回复…', 'Preparing reply…'); }
+          if (delta.reasoning_content) { reasoning += delta.reasoning_content; }
+          if (delta.content) { content += delta.content; this.liveResponse = content; this.updateBrief(content); }
           for (const change of delta.tool_calls ?? []) {
             if (!calls[change.index]) calls[change.index] = { id: '', type: 'function', function: {name: '', arguments: ''} };
             const call = calls[change.index];
@@ -136,9 +149,8 @@ export class LifeAgent {
             call.function.name += change.function?.name ?? '';
             call.function.arguments += change.function?.arguments ?? '';
             if (call.function.name === 'research_script' || call.function.name === 'research_write') {
-              this.progress = this.text('正在编写研究程序…', 'Writing a research program…');
               const item = this.activities[this.activities.length-1];
-              if (item) { item.title = this.progress; item.detail = `${Math.floor(call.function.arguments.length/1024)} KB`; }
+              if (item) { item.detail = `${Math.floor(call.function.arguments.length/1024)} KB`; }
             }
           }
           if (content.length + reasoning.length > 256*1024) failure = 'response_truncated';
@@ -163,15 +175,16 @@ export class LifeAgent {
   async send(input: string): Promise<void> {
     if (this.busy || !this.key.trim() || !this.consent || !input.trim() || !this.systemPrompt) return;
     this.lines.push({role: 'user', text: input.trim()});
+    this.progress = this.text('等待 Agent 的工作简报…', 'Waiting for the Agent’s work brief…');
     this.busy = true; const epoch = ++this.epoch;
     if (!this.history.length) this.history.push({role: 'system', content: this.systemPrompt});
     this.history.push({role: 'user', content: input.trim()});
     this.ticker = setInterval(() => this.changed(), 1000);
-    let failed = false, toolCount = 0, effort = 'high';
+    let failed = false, effort = 'high';
     try {
-      for (let round = 0; round < 192; round++) {
+      while (true) {
         if (epoch !== this.epoch) return;
-        this.activity(this.text('正在思考', 'Thinking') + ` · ${round+1}/192`);
+        this.activity(this.text('模型回复', 'Model response'));
         let message: Message;
         try { message = await this.completion(effort, epoch); effort = 'high'; }
         catch (error) {
@@ -183,15 +196,15 @@ export class LifeAgent {
         }
         if (epoch !== this.epoch) return;
         this.finishActivity(); this.history.push(message); this.liveResponse = '';
-        if (message.content) this.lines.push({role: 'assistant', text: message.content});
+        if (message.content) { this.lines.push({role: 'assistant', text: message.content}); this.updateBrief(message.content); }
         this.changed();
         if (!message.tool_calls?.length) return;
         for (const call of message.tool_calls) {
-          if (++toolCount > 768) throw new Error('tool_limit');
           if (epoch !== this.epoch) return;
           let value: string;
           try {
             const args = JSON.parse(call.function.arguments) as AgentArgs;
+            if (args.work_brief?.trim()) this.reportBrief(args.work_brief);
             this.activity(this.toolProgress(call.function.name, args));
             value = await this.execute(call.function.name, args);
           } catch (error) { value = JSON.stringify({ok: false, error: (error as Error).message}); }
@@ -202,7 +215,6 @@ export class LifeAgent {
           this.finishActivity(result.ok === false ? (result.error ?? 'tool_failed') : '');
         }
       }
-      throw new Error('round_limit');
     } catch (error) {
       failed = true;
       if (epoch === this.epoch) this.lines.push({role: 'assistant', text: this.text('请求未完成：', 'Request failed: ') + (error as Error).message});

@@ -51,6 +51,17 @@ function reply(message, finish = 'stop') {
   round=0;requests=[];
   respond=async()=> ++round===1 ? reply({tool_calls:[{id:'bad',function:{name:'canvas_edit',arguments:'{"cells":'}}]},'length') : reply({content:'Recovered'});
   await a.send('recover');assert.equal(called,1,'truncated tool call must never execute');assert.equal(requests[1].reasoning_effort,'low');assert.equal(a.lines.at(-1).text,'Recovered');
+  // Model-authored summaries survive reasoning/tool phases and appear in chat.
+  const brief='检查 OTCA 单元的周期，确认它能模拟一个元细胞';
+  round=0; let held=false;
+  a.execute=async()=>{assert.equal(a.progress,brief);assert.ok(a.lines.some(x=>x.text===brief));held=true;return '{"ok":true}';};
+  respond=async()=>++round===1 ? reply({content:'我先核对 OTCA 规则。',tool_calls:[{id:'brief',function:{name:'canvas_state',arguments:JSON.stringify({work_brief:brief})}}]},'tool_calls') : reply({content:'规则核对完成。'});
+  await a.send('report');assert.ok(held);assert.ok(a.lines.some(x=>x.text==='我先核对 OTCA 规则。'));assert.ok(a.lines.some(x=>x.text==='规则核对完成。'));
+  // Cross both former limits (192 rounds and 768 calls) without truncating work.
+  round=0;let longCalls=0;
+  a.execute=async()=>{longCalls++;return '{"ok":true}';};
+  respond=async()=> ++round<=193 ? reply({tool_calls:Array.from({length:4},(_,i)=>({id:`long-${round}-${i}`,function:{name:'canvas_state',arguments:JSON.stringify({work_brief:'继续核对当前元细胞状态'})}}))},'tool_calls') : reply({content:'全部检查完成。'});
+  await a.send('long');assert.equal(round,194);assert.equal(longCalls,772);assert.equal(a.lines.at(-1).text,'全部检查完成。');
   respond=async()=>({status:401,body:'secret server diagnostic'});
   await a.send('fail');assert.equal(a.busy,false);assert.ok(!a.lines.at(-1).text.includes('secret server diagnostic'));
   a.consent=false;const before=requests.length;await a.send('no consent');assert.equal(requests.length,before);assert.ok(destroyed>0);

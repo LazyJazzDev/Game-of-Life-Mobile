@@ -239,12 +239,13 @@ struct Index {
         this.agentOutcome = this.agent.progress;
       }
       this.agentBusy = this.agent.busy; this.agentProgress = this.agent.progress;
+      const messageChanged = this.agentLines.length !== this.agent.lines.length || this.agentLive !== this.agent.liveResponse;
       this.agentLines = this.agent.lines.slice();
       this.agentLive = this.agent.liveResponse;
       this.agentActivities = this.agent.activities.slice();
       const last = this.agentActivities[this.agentActivities.length-1];
       this.agentElapsed = last ? Math.floor((Date.now()-last.started)/1000) : 0;
-      this.agentScroller.scrollEdge(Edge.Bottom);
+      if (messageChanged) this.agentScroller.scrollEdge(Edge.Bottom);
     };
     this.research.visualChanged = (value: string) => this.queueAgentPreview(value);
     this.agent.cancelResearch = () => {
@@ -1117,12 +1118,6 @@ struct Index {
                 }.width('100%').alignItems(HorizontalAlign.Start)
               }, (line: AgentLine, index: number) => `${index}`)
               if (this.agentLive.length > 0) { Text(this.agentLive).fontSize(16).fontColor(LABEL).width('100%') }
-              ForEach(this.agentActivities, (item: AgentActivity, index: number) => {
-                Column({ space: 3 }) {
-                  Text(`${item.failed ? '!' : item.finished ? '✓' : '…'} ${item.title}`).fontSize(13).fontColor(item.failed ? '#FF9F0A' : LABEL)
-                  if (item.detail.length > 0) { Text(item.detail).fontSize(12).fontColor(SECONDARY).maxLines(3).textOverflow({overflow: TextOverflow.Ellipsis}) }
-                }.width('100%').alignItems(HorizontalAlign.Start)
-              }, (item: AgentActivity, index: number) => `${item.started}-${index}`)
             }.width('100%').alignItems(HorizontalAlign.Start)
           }.height(this.areaHeight > 500 ? 230 : 100).width('100%')
           Row({ space: 8 }) {
@@ -1135,7 +1130,7 @@ struct Index {
       } else {
         Row({ space: 8 }) {
           if (this.agentBusy) { LoadingProgress().width(18).height(18).color('#9BD7FF') }
-          Text(this.agentBusy ? `${this.agentProgress} · ${this.agentElapsed}s` : this.agentOutcome || this.agent.text('让 Agent 帮你探索…', 'Explore with Agent…'))
+          Text(this.agentBusy ? this.agentProgress : this.agentOutcome || this.agent.text('让 Agent 帮你探索…', 'Explore with Agent…'))
             .fontSize(14).fontColor(this.agentBusy ? '#C6E8FF' : LABEL).maxLines(2).layoutWeight(1)
             .onClick(() => { this.agentVisible = true; })
           if (this.agentBusy) {

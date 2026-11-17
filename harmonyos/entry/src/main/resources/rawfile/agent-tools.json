@@ -6,8 +6,15 @@
       "description": "Read current canvas state. Coordinates have center origin, x right and y down.",
       "parameters": {
         "type": "object",
-        "properties": {},
-        "required": [],
+        "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          }
+        },
+        "required": [
+          "work_brief"
+        ],
         "additionalProperties": false
       }
     }
@@ -20,6 +27,10 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
           "action": {
             "type": "string",
             "enum": [
@@ -49,6 +60,7 @@
           }
         },
         "required": [
+          "work_brief",
           "action",
           "value",
           "x",
@@ -66,6 +78,10 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
           "x": {
             "type": "integer",
             "minimum": -8192,
@@ -88,6 +104,7 @@
           }
         },
         "required": [
+          "work_brief",
           "x",
           "y",
           "width",
@@ -105,6 +122,10 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
           "cells": {
             "type": "array",
             "items": {
@@ -116,6 +137,7 @@
           }
         },
         "required": [
+          "work_brief",
           "cells"
         ],
         "additionalProperties": false
@@ -129,8 +151,15 @@
       "description": "Return curated Life research links, including metapixels. Links are references, not fetched page content.",
       "parameters": {
         "type": "object",
-        "properties": {},
-        "required": [],
+        "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          }
+        },
+        "required": [
+          "work_brief"
+        ],
         "additionalProperties": false
       }
     }
@@ -143,6 +172,10 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
           "name": {
             "type": "string",
             "pattern": "^[A-Za-z0-9_-]{1,64}$"
@@ -152,6 +185,7 @@
           }
         },
         "required": [
+          "work_brief",
           "name",
           "rle"
         ],
@@ -166,8 +200,15 @@
       "description": "List saved templates and dimensions, population, hash. Templates persist across application restarts; do not guess names.",
       "parameters": {
         "type": "object",
-        "properties": {},
-        "required": [],
+        "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          }
+        },
+        "required": [
+          "work_brief"
+        ],
         "additionalProperties": false
       }
     }
@@ -180,12 +221,17 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
           "name": {
             "type": "string",
             "pattern": "^[A-Za-z0-9_-]{1,64}$"
           }
         },
         "required": [
+          "work_brief",
           "name"
         ],
         "additionalProperties": false
@@ -200,6 +246,10 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
           "name": {
             "type": "string",
             "pattern": "^[A-Za-z0-9_-]{1,64}$"
@@ -278,6 +328,7 @@
           }
         },
         "required": [
+          "work_brief",
           "name",
           "width",
           "height",
@@ -295,6 +346,10 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
           "name": {
             "type": "string",
             "pattern": "^[A-Za-z0-9_-]{1,64}$"
@@ -319,6 +374,7 @@
           }
         },
         "required": [
+          "work_brief",
           "name",
           "x",
           "y",
@@ -336,6 +392,10 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
           "x": {
             "type": "integer",
             "minimum": -8192,
@@ -358,6 +418,7 @@
           }
         },
         "required": [
+          "work_brief",
           "x",
           "y",
           "width",
@@ -375,6 +436,10 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
           "x": {
             "type": "integer",
             "minimum": -8192,
@@ -397,6 +462,7 @@
           }
         },
         "required": [
+          "work_brief",
           "x",
           "y",
           "width",
@@ -414,11 +480,16 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
           "url": {
             "type": "string"
           }
         },
         "required": [
+          "work_brief",
           "url"
         ],
         "additionalProperties": false
@@ -433,6 +504,10 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
           "document": {
             "type": "string"
           },
@@ -447,6 +522,7 @@
           }
         },
         "required": [
+          "work_brief",
           "document",
           "offset",
           "length"
@@ -463,6 +539,10 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
           "code": {
             "type": "string"
           },
@@ -475,6 +555,7 @@
           }
         },
         "required": [
+          "work_brief",
           "code"
         ],
         "additionalProperties": false
@@ -489,6 +570,10 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
           "name": {
             "type": "string"
           },
@@ -497,6 +582,7 @@
           }
         },
         "required": [
+          "work_brief",
           "name",
           "document"
         ],
@@ -512,6 +598,10 @@
       "parameters": {
         "type": "object",
         "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
           "name": {
             "type": "string"
           },
@@ -520,6 +610,7 @@
           }
         },
         "required": [
+          "work_brief",
           "name",
           "content"
         ],

@@ -387,3 +387,18 @@ and returned population 3, then restored the main canvas. iOS build 30 streamed
 the same native preview via JavaScript. Screenshots confirm that only live cells
 are blue, with unchanged dead-cell/background colors; no Web panel is displayed.
 Evidence: `out/agent/native-mate109/`, `out/agent/native-ios30/`.
+
+### Agent-authored work briefs (1.0.3 build 110 / iOS build 31)
+
+Every model tool schema requests a `work_brief`: one concrete sentence in the
+user's language. It appears in the conversation and stays in the collapsed bar
+until the Agent reports new work. Ordinary streamed replies also remain in chat;
+reasoning and generic tool-phase labels no longer overwrite the current brief.
+The expanded conversation shows messages rather than a tool activity timeline.
+Stopping retains text already received during streaming.
+
+The former 192-response and 768-tool-call caps are removed on both platforms.
+Cancellation, request deadlines and per-request memory/context bounds remain.
+A deterministic streaming regression completes 194 responses and 772 tool calls,
+checks that a model brief survives tool execution, and verifies that both brief
+and full response text remain visible in the message history.
