@@ -67,6 +67,50 @@ loop. These are model-reported outcomes, not an independent correctness proof:
 construction trials must still be checked against actual evolution and inputs.
 The same tool and completion contracts are implemented on both platforms.
 
+## Eight-bit adder validation (iOS build 36)
+
+A factory-reset simulator trial with OpenAI independently discovered
+[`bespoyasov/binary-full-adder-in-the-game-of-life`](https://github.com/bespoyasov/binary-full-adder-in-the-game-of-life)
+(reference revision `e64d940d154a24808636f83b224f5d6c4e04fd54`). The Agent
+adapted its cell patterns into eight physically connected full-adder stages,
+corrected the carry routing and phase alignment, and saved the resulting RLEs.
+The prompt supplied the task and sample inputs, not the source or circuit recipe.
+
+The final `v2` circuit uses invariant wiring and 16 independently optional input
+guns. A present gun encodes 1; an absent gun encodes 0. In the saved fixed-core
+coordinate frame, bit `i` runs from 0 (least significant, top) to 7 (bottom):
+
+| Item | Position / extent |
+| --- | --- |
+| A input gun | `(324 + 182*i, 120 + 1247*i)` |
+| B input gun | `(325 + 182*i, 242 + 1247*i)` |
+| Output window | `(710 + 182*i, 945 + 1247*i)`, size `43 × 48` |
+
+Start from `Adder8_FixedCore_v2`; overlay `Adder8_InputEven_v2` for even bit
+indices and `Adder8_InputOdd_v2` for odd indices at each enabled input position.
+Both input templates have origin `(0, 0)` and size `27 × 39`. Evolve B3/S23 for
+65520 generations. An output glider stream encodes 1; no output stream encodes 0.
+Overflow is discarded. For 187 + 53, outputs from bit 0 to bit 7 are `00001111`,
+or `11110000` in conventional order: 240. Host arithmetic is used only to check
+expected test answers, not to construct output or intermediate carry signals.
+
+Independent native Golly HashLife validation passed 111 distinct input pairs,
+including carry chains and overflow, plus 15 checks at later generation counts.
+Every case also verified that changing inputs changes only the optional guns.
+The sample's initial and generation-65520 cell sets matched the saved templates
+exactly. Output decoding checked actual glider shapes rather than arbitrary
+nonempty regions. This is sampled validation, not exhaustive testing of all
+65536 input pairs.
+
+The main native canvas additionally advanced the side-by-side initial/result
+demonstration by 60 generations and matched its predicted population and hash;
+all eight native output windows returned 240. This does not imply the complete
+circuit has a 60-generation period. Local trial evidence, RLE templates, and the
+independent report are in `out/agent/adder-ios36/`; the verifier is
+`out/agent/verify_adder36.py`. These are local verification artifacts, not bundled
+Agent knowledge. The simulator remains available for inspection; Mate 70 was
+not used for this trial.
+
 Protocol regressions: `node harmonyos/tests/agent.cjs` and
 `node harmonyos/tests/research_find.cjs` cover premature final text, malformed
 completion, waiting, cancellation, retained-document search beyond excerpts,
