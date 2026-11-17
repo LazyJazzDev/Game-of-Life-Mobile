@@ -987,7 +987,7 @@ struct Index {
     if (name === 'research_script') {
       const raw = await this.research.script(args.code ?? '', args.language ?? 'javascript');
       const execution = JSON.parse(raw) as ResearchResult;
-      if (!execution.ok || !execution.value) return raw;
+      if (!execution.ok || !execution.value || typeof execution.value !== 'object' || Array.isArray(execution.value)) return raw;
       const value = execution.value;
       const saves: Object[] = [];
       let ok = true;
