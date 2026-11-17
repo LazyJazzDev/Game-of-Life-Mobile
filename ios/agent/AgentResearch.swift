@@ -55,21 +55,23 @@ import WebKit
     }
     guard let web else { throw AgentFailure.invalidResponse }
     // A disposable worker supplies a hard execution deadline without blocking UI.
+    let base=Bundle.main.bundleURL.appendingPathComponent("hashlife")
+    let engine=try String(contentsOf:base.appendingPathComponent("life.js"),encoding:.utf8)+"\n"+String(contentsOf:base.appendingPathComponent("adapter.js"),encoding:.utf8)
     let body="""
     return await new Promise((resolve,reject)=>{
-      const source = `self.fetch=undefined; self.XMLHttpRequest=undefined; self.WebSocket=undefined; self.importScripts=undefined;
-      self.onmessage=e=>{try {const result=new Function('documents',e.data.code)(e.data.documents);
+      const source = engine + `\nself.fetch=undefined; self.XMLHttpRequest=undefined; self.WebSocket=undefined; self.importScripts=undefined;
+      self.onmessage=e=>{try {const result=new Function('documents','life',e.data.code)(e.data.documents,life);
       self.postMessage({ok:true,value:result});} catch(err){self.postMessage({ok:false,error:String(err)});}}`;
       const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
       const worker=new Worker(url);
       const stop=()=>{worker.terminate();URL.revokeObjectURL(url);};
-      const timer=setTimeout(()=>{stop();resolve({ok:false,error:'execution_timeout'});},10000);
+      const timer=setTimeout(()=>{stop();resolve({ok:false,error:'execution_timeout'});},60000);
       worker.onmessage=e=>{clearTimeout(timer);stop();resolve(e.data);};
       worker.onerror=e=>{clearTimeout(timer);stop();resolve({ok:false,error:e.message});};
       worker.postMessage({code,documents});
     });
     """
-    let result=try await web.callAsyncJavaScript(body,arguments:["code":code,"documents":documents],in:nil,contentWorld:.page)
+    let result=try await web.callAsyncJavaScript(body,arguments:["code":code,"documents":documents,"engine":engine],in:nil,contentWorld:.page)
     guard let object=result as? [String:Any] else { throw AgentFailure.invalidResponse }
     return object
   }
