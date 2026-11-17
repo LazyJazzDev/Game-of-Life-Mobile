@@ -30,3 +30,8 @@ and writes `AgentProgress.json` plus a final `AgentSmoke.json`; these reports
 contain tool inputs/results, not the API credential. `LONGMARCH_RESEARCH_SELFTEST`
 executes a supplied Python test in the same research runtime, with its result
 written to `ResearchSelftest.json`. Reset again after a self-test.
+
+The disposable-worker implementation is shared with HarmonyOS in
+`mobile/agent-research.js`. iOS bundles this file directly; HarmonyOS stages it
+with `harmonyos/prepare_agent.py`. Platform code handles document fetching,
+worker hosting and native template saves.

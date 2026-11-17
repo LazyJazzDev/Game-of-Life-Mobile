@@ -267,3 +267,43 @@ the previous snapshot from incomplete writes. This private snapshot is independe
 of My Patterns; explicit screenshot capture sessions do not read or replace it.
 An abrupt process kill without a background callback restores the last completed
 checkpoint.
+
+## Agent research parity (1.0.3 build 103)
+
+HarmonyOS now stages the same 17-tool contract, generic system prompt, reference
+links and HashLife engine as iOS. `prepare_agent.py`, called by `build_hap.sh`,
+copies these assets and the local `tools/deepseek-api.key`; the credential is
+ignored by Git and is not exposed through an editing field. Network consent
+remains explicit. No OTCA template, construction guide or pattern catalog is
+available to the Agent. Previously installed user templates use a separate
+`AgentTemplatesBasic` directory.
+
+`mobile/agent-research.js` is the shared disposable-worker implementation used
+by WKWebView and ArkWeb. It supports JavaScript, Pyodide Python, generic B3/S23
+HashLife, RLE codecs, stdout and a 60-second execution deadline. The worker
+receives research documents only, with no credential or native filesystem
+bridge. The ArkWeb bridge only returns execution results. Fetched documents
+and Agent-authored programs live in an in-memory workspace; returned RLE
+artifacts are saved through the native template implementation.
+
+The DeepSeek V4 Pro loop supports 192 rounds / 768 tool calls, streamed replies
+and tool arguments, an activity list and current-step timer. Oversized model
+responses are discarded without executing partial tool calls, then retried
+with smaller steps and low reasoning effort. Cancellation also stops the
+research worker. Model reasoning is retained for the API protocol but never
+shown in the UI.
+
+Mate 70 build 103 passed the same Python runtime regression as iOS (custom
+list subclasses, helper-name collisions, RLE round trips and repeated 66,000-cell
+results). Streaming tests cover split UTF-8 bytes and tool arguments, reasoning
+isolation, truncation recovery, cancellation, consent and HTTP errors. Existing
+privacy startup/hosted policy and file recovery regressions passed. A fresh-install
+live Agent integration run is pending the system privacy confirmation; do not
+interpret these checks as a full on-device 6×6 OTCA trial.
+
+Debug-only startup parameter `researchSelftest` accepts Python test source and
+writes `files/ResearchSelftest.json` through the same research/tool wrapper.
+`agentSmoke` runs an explicit task and saves `files/AgentSmoke.json` when finished.
+Both wait for native readiness rather than a rendered-frame count, since a
+paused canvas may render only one frame. Do not copy previous workspace or
+conversation state into fresh full trials.
