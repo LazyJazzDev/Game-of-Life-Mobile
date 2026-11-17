@@ -39,18 +39,26 @@ import WebKit
 
   func content(_ id:String) -> String? { documents[id] }
 
+  func write(_ id:String,_ content:String) -> [String:Any] {
+    guard id.range(of:"^[A-Za-z][A-Za-z0-9_-]{0,63}$",options:.regularExpression) != nil,
+      content.utf8.count <= 1024*1024 else { return ["ok":false,"error":"invalid_artifact"] }
+    let name="work_"+id; documents[name]=content; sources[name]="Agent-authored workspace";
+    return ["ok":true,"document":name,"length":content.count]
+  }
+
+
   func webView(_ webView:WKWebView,didFinish navigation:WKNavigation!) { ready?.resume(); ready=nil }
   func webView(_ webView:WKWebView,didFailProvisionalNavigation navigation:WKNavigation!,withError error:Error) {
     ready?.resume(throwing:error); ready=nil
   }
 
-  func script(_ code:String) async throws -> [String:Any] {
+  func script(_ code:String, language:String = "javascript") async throws -> [String:Any] {
     if web == nil {
       let configuration=WKWebViewConfiguration(); configuration.websiteDataStore = .nonPersistent()
       let view=WKWebView(frame:.zero,configuration:configuration); view.navigationDelegate=self; web=view
       try await withCheckedThrowingContinuation { (continuation:CheckedContinuation<Void,Error>) in
         ready=continuation
-        view.loadHTMLString("<html><head><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; worker-src blob:; connect-src 'none'\"></head><body></body></html>",baseURL:nil)
+        view.loadHTMLString("<html><head><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net; worker-src blob:; connect-src https://cdn.jsdelivr.net\"></head><body></body></html>",baseURL:nil)
       }
     }
     guard let web else { throw AgentFailure.invalidResponse }
@@ -59,19 +67,34 @@ import WebKit
     let engine=try String(contentsOf:base.appendingPathComponent("life.js"),encoding:.utf8)+"\n"+String(contentsOf:base.appendingPathComponent("adapter.js"),encoding:.utf8)
     let body="""
     return await new Promise((resolve,reject)=>{
-      const source = engine + `\nself.fetch=undefined; self.XMLHttpRequest=undefined; self.WebSocket=undefined; self.importScripts=undefined;
-      self.onmessage=e=>{try {const result=new Function('documents','life',e.data.code)(e.data.documents,life);
-      self.postMessage({ok:true,value:result});} catch(err){self.postMessage({ok:false,error:String(err)});}}`;
+      const source = engine + `\nconst originalFetch=self.fetch, originalImport=self.importScripts; self.fetch=undefined; self.XMLHttpRequest=undefined; self.WebSocket=undefined; self.importScripts=undefined;
+      self.onmessage=async e=>{try {
+        let result;
+        if(e.data.language==='python') {
+          self.fetch=originalFetch; self.importScripts=originalImport;
+          importScripts('https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js');
+          const py=await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/'});
+          self.fetch=undefined; self.importScripts=undefined;
+          py.globals.set('documents',py.toPy(e.data.documents));
+          py.globals.set('_evolve', (cells,n)=>life.evolve(cells.toJs ? cells.toJs() : cells,n));
+          py.runPython('def life_evolve(cells, generations):'+String.fromCharCode(10)+'    return _evolve(cells, generations).to_py()');
+          await py.runPythonAsync(e.data.code);
+          const value=py.globals.get('result');
+          result=value && value.toJs ? value.toJs({dict_converter:Object.fromEntries}) : value;
+          if(value && value.destroy)value.destroy();
+        } else { result=new Function('documents','life',e.data.code)(e.data.documents,life); }
+        self.postMessage({ok:true,value:result});
+      } catch(err){self.postMessage({ok:false,error:String(err),stack:err.stack});}}`;
       const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
       const worker=new Worker(url);
       const stop=()=>{worker.terminate();URL.revokeObjectURL(url);};
       const timer=setTimeout(()=>{stop();resolve({ok:false,error:'execution_timeout'});},60000);
       worker.onmessage=e=>{clearTimeout(timer);stop();resolve(e.data);};
       worker.onerror=e=>{clearTimeout(timer);stop();resolve({ok:false,error:e.message});};
-      worker.postMessage({code,documents});
+      worker.postMessage({code,documents,language});
     });
     """
-    let result=try await web.callAsyncJavaScript(body,arguments:["code":code,"documents":documents,"engine":engine],in:nil,contentWorld:.page)
+    let result=try await web.callAsyncJavaScript(body,arguments:["code":code,"documents":documents,"engine":engine,"language":language],in:nil,contentWorld:.page)
     guard let object=result as? [String:Any] else { throw AgentFailure.invalidResponse }
     return object
   }

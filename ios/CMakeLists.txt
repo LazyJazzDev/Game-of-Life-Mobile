@@ -149,6 +149,7 @@ if(GOL_APP AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
   add_custom_target(${target}_resources
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${GAME_OF_LIFE_RESOURCES}" "$<TARGET_BUNDLE_DIR:${target}>/GameResources"
     COMMAND "${CMAKE_COMMAND}" -E rm -rf "$<TARGET_BUNDLE_DIR:${target}>/AgentTemplates" "$<TARGET_BUNDLE_DIR:${target}>/GameResources/AgentTemplates"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/agent/hashlife" "$<TARGET_BUNDLE_DIR:${target}>/hashlife"
     DEPENDS ${bundle_copy_dependency}
     VERBATIM)
   add_dependencies(${target} ${target}_resources)
