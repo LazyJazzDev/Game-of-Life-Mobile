@@ -23,7 +23,7 @@ struct AgentActivity: Identifiable {
   @Published var activities: [AgentActivity] = []
   @Published var startedAt = Date()
   private let key: String
-  private let model = "gpt-6.1-sol"
+  private let model = "gpt-6-astra"
   private let initialReasoningEffort: String = {
     #if targetEnvironment(simulator)
     if ProcessInfo.processInfo.environment["LONGMARCH_AGENT_EFFORT"] == "low" { return "low" }

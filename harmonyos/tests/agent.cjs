@@ -135,6 +135,6 @@ function reply(message, finish = 'stop', terminate = true) {
   assert.ok(!sent.some(m=>m.type==='function_call' && ['edit1','edit2'].includes(m.call_id)));
   assert.ok(!sent.some(m=>['edit1','edit2'].includes(m.call_id)));
   a.consent=false;const before=requests.length;await a.send('no consent');assert.equal(requests.length,before);assert.ok(destroyed>0);
-  assert.ok(requests[0].model==='gpt-6.1-sol');
+  assert.ok(requests[0].model==='gpt-6-astra');
   console.log('PASS Responses SSE UTF-8/tool fragments, encrypted reasoning replay, completion recovery, cancellation, retained context, consent and HTTP errors');
 })().catch(e=>{console.error(e);process.exit(1);});

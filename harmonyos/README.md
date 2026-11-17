@@ -270,7 +270,7 @@ checkpoint.
 
 ## Current Agent provider
 
-Both platforms now use OpenAI `gpt-6.1-sol` with high reasoning via Responses.
+Both platforms now use OpenAI `gpt-6-astra` with high reasoning via Responses.
 `prepare_agent.py` stages the local `tools/openai-api.key`; the credential remains
 ignored by Git. Consent UI names OpenAI. Requests disable server-side response
 storage, preserve encrypted reasoning/assistant phase for tool continuation,

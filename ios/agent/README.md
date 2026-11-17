@@ -39,7 +39,7 @@ The disposable-worker implementation is shared with HarmonyOS in
 with `harmonyos/prepare_agent.py`. Platform code handles document fetching,
 worker hosting and native template saves.
 
-Both platforms use OpenAI `gpt-6.1-sol` with high reasoning through the Responses
+Both platforms use OpenAI `gpt-6-astra` with high reasoning through the Responses
 API. The local credential is `tools/openai-api.key` (iOS can override this with
 `LIFE_AGENT_KEY_FILE`; reconfigure existing build directories when switching keys).
 Requests use `store: false` and sequential function calls. Complete response
@@ -69,7 +69,7 @@ The same tool and completion contracts are implemented on both platforms.
 
 ## Eight-bit adder validation (iOS build 36)
 
-A factory-reset simulator trial with OpenAI independently discovered
+A factory-reset simulator trial with OpenAI `gpt-6.1-sol` independently discovered
 [`bespoyasov/binary-full-adder-in-the-game-of-life`](https://github.com/bespoyasov/binary-full-adder-in-the-game-of-life)
 (reference revision `e64d940d154a24808636f83b224f5d6c4e04fd54`). The Agent
 adapted its cell patterns into eight physically connected full-adder stages,

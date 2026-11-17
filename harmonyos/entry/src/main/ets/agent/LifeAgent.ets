@@ -40,7 +40,7 @@ export interface AgentLine { role: string; text: string; }
 export interface AgentActivity { title: string; detail: string; started: number; finished: boolean; failed: boolean; }
 export class LifeAgent {
   key: string = '';
-  readonly model: string = 'gpt-6.1-sol';
+  readonly model: string = 'gpt-6-astra';
   systemPrompt: string = '';
   liveResponse: string = '';
   activities: AgentActivity[] = [];
