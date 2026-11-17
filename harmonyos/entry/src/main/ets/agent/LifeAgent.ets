@@ -4,6 +4,7 @@ import { util } from '@kit.ArkTS';
 export interface TemplatePart { name: string; x: number; y: number; rotation?: number; mirror?: number; columns?: number; rows?: number; dx?: number; dy?: number; }
 export interface AgentArgs {
   work_brief?: string;
+  summary?: string; evidence?: string[]; question?: string; reason?: string;
   url?: string; document?: string; offset?: number; length?: number; content?: string; code?: string; language?: string;
   rle?: string; parts?: TemplatePart[]; mode?: string;
   action?: string; value?: number; x?: number; y?: number;
@@ -180,7 +181,7 @@ export class LifeAgent {
     if (!this.history.length) this.history.push({role: 'system', content: this.systemPrompt});
     this.history.push({role: 'user', content: input.trim()});
     this.ticker = setInterval(() => this.changed(), 1000);
-    let failed = false, effort = 'high';
+    let failed = false, waiting = false, effort = 'high';
     try {
       while (true) {
         if (epoch !== this.epoch) return;
@@ -198,21 +199,34 @@ export class LifeAgent {
         this.finishActivity(); this.history.push(message); this.liveResponse = '';
         if (message.content) { this.lines.push({role: 'assistant', text: message.content}); this.updateBrief(message.content); }
         this.changed();
-        if (!message.tool_calls?.length) return;
+        if (!message.tool_calls?.length) {
+          this.history.push({role: 'user', content: "Audit the original request against your actual successful tool results. If anything remains unimplemented or unverified, continue with the next concrete step now. Choosing an engineering approach or proceeding through smaller milestones is already authorized; do not ask me to approve ordinary research or a reduced scope. A failed search or a small collision scan does not establish impossibility. Search complete retained documents and repository indexes with research_find before claiming resources are absent. Call task_complete only when all requirements are met, or task_wait only for genuinely missing user-specific information or destructive confirmation."});
+          continue;
+        }
         for (const call of message.tool_calls) {
           if (epoch !== this.epoch) return;
           let value: string;
+          let finished = false;
           try {
             const args = JSON.parse(call.function.arguments) as AgentArgs;
             if (args.work_brief?.trim()) this.reportBrief(args.work_brief);
             this.activity(this.toolProgress(call.function.name, args));
-            value = await this.execute(call.function.name, args);
+            if (call.function.name === 'task_complete') {
+              if (!args.summary?.trim() || !Array.isArray(args.evidence) || !args.evidence.length || args.evidence.some(item => typeof item !== 'string' || !item.trim())) throw new Error('invalid_completion');
+              this.lines.push({role: 'assistant', text: args.summary}); finished = true;
+              value = '{"ok":true,"completed":true}';
+            } else if (call.function.name === 'task_wait') {
+              if (!args.question?.trim() || !['missing_user_information', 'destructive_confirmation'].includes(args.reason ?? '')) throw new Error('invalid_wait');
+              this.lines.push({role: 'assistant', text: args.question}); finished = true; waiting = true;
+              value = '{"ok":true,"waiting_for_user":true}';
+            } else value = await this.execute(call.function.name, args);
           } catch (error) { value = JSON.stringify({ok: false, error: (error as Error).message}); }
           if (epoch !== this.epoch) return;
           this.trace.push({name: call.function.name, arguments: call.function.arguments, result: value});
           this.history.push({role: 'tool', tool_call_id: call.id, content: value});
           const result = JSON.parse(value) as ToolResult;
           this.finishActivity(result.ok === false ? (result.error ?? 'tool_failed') : '');
+          if (finished) return;
         }
       }
     } catch (error) {
@@ -221,7 +235,7 @@ export class LifeAgent {
     } finally {
       if (epoch === this.epoch) {
         clearInterval(this.ticker); this.request?.destroy(); this.request = undefined;
-        this.busy = false; this.liveResponse = ''; this.progress = failed ? this.text('请求失败', 'Request failed') : this.text('已完成', 'Finished'); this.changed();
+        this.busy = false; this.liveResponse = ''; this.progress = failed ? this.text('请求失败', 'Request failed') : waiting ? this.text('等待你的信息', 'Waiting for your input') : this.text('已完成', 'Finished'); this.changed();
       }
     }
   }

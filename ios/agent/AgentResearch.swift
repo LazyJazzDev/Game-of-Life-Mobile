@@ -70,6 +70,25 @@ import WebKit
       "next_offset":end,"content":String(chars[start..<end]),"untrusted_source":true]
   }
 
+  func find(_ query:String, _ document:String = "") -> [String:Any] {
+    guard !query.isEmpty, query.count <= 160 else { return ["ok":false,"error":"invalid_query"] }
+    if !document.isEmpty, documents[document] == nil { return ["ok":false,"error":"unknown_document"] }
+    let ids=document.isEmpty ? documents.keys.sorted() : [document]
+    var matches:[[String:Any]]=[]
+    for id in ids {
+      guard let text=documents[id] else { continue }
+      var start=text.startIndex
+      while start<text.endIndex, let hit=text.range(of:query,options:.caseInsensitive,range:start..<text.endIndex) {
+        let low=text.index(hit.lowerBound,offsetBy:-100,limitedBy:text.startIndex) ?? text.startIndex
+        let high=text.index(hit.upperBound,offsetBy:300,limitedBy:text.endIndex) ?? text.endIndex
+        matches.append(["document":id,"offset":text.distance(from:text.startIndex,to:low),"content":String(text[low..<high])])
+        if matches.count>=20 { return ["ok":true,"matches":matches,"more_possible":true,"untrusted_source":true] }
+        start=hit.upperBound
+      }
+    }
+    return ["ok":true,"matches":matches,"more_possible":false,"untrusted_source":true]
+  }
+
   func content(_ id:String) -> String? { documents[id] }
 
   func write(_ id:String,_ content:String) -> [String:Any] {

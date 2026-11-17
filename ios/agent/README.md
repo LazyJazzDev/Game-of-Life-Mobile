@@ -37,3 +37,21 @@ with `harmonyos/prepare_agent.py`. Platform code handles document fetching,
 worker hosting and native template saves.
 
 Both platforms default to `deepseek-flash`, as requested by the user.
+
+Research responses contain bounded excerpts. `research_find` searches the full
+retained documents (including repository indexes) and returns document IDs,
+character offsets, and surrounding text for follow-up reads. It treats the query
+literally and limits each result to 20 matches.
+
+A prose-only model response no longer ends the tool loop. The Agent audits the
+original request and continues unfinished work. `task_complete` requires a final
+summary and nonempty evidence; `task_wait` distinguishes genuinely missing user
+information or destructive confirmation from completion. Stop still cancels the
+loop. These are model-reported outcomes, not an independent correctness proof:
+construction trials must still be checked against actual evolution and inputs.
+The same tool and completion contracts are implemented on both platforms.
+
+Protocol regressions: `node harmonyos/tests/agent.cjs` and
+`node harmonyos/tests/research_find.cjs` cover premature final text, malformed
+completion, waiting, cancellation, retained-document search beyond excerpts,
+and the existing long-running loop behavior.

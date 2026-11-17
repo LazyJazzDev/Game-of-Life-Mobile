@@ -1,0 +1,26 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const ts = require('/Applications/DevEco-Studio.app/Contents/tools/hvigor/hvigor-ohos-plugin/node_modules/typescript');
+const source = fs.readFileSync('harmonyos/entry/src/main/ets/agent/AgentResearch.ets','utf8');
+const output = ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+const exportsObject = {};
+vm.runInNewContext(output,{exports:exportsObject, require(name){
+  if(name==='@kit.ArkWeb') return {webview:{WebviewController:class {}}};
+  if(name==='@kit.ArkTS') return {util:{TextEncoder:class {encodeInto(s){return Buffer.from(s);}}}};
+  return {};
+}, setTimeout,clearTimeout});
+const a = new exportsObject.AgentResearch();
+const content = 'x'.repeat(15000) + ' Logic.[Gate] 中文 ' + 'x'.repeat(500);
+a.write('long',content);a.write('second','logic.[gate]');
+let r=JSON.parse(a.find('LOGIC.[GATE]'));
+assert.equal(r.matches.length,2);assert.equal(r.untrusted_source,true);
+const match=r.matches.find(x=>x.document==='work_long');assert.ok(match.offset>12000);
+assert.equal(JSON.parse(a.read(match.document,match.offset,match.content.length)).content,match.content);
+assert.equal(JSON.parse(a.find('missing')).matches.length,0);
+assert.equal(JSON.parse(a.find('x','missing')).ok,false);
+assert.equal(JSON.parse(a.find('')).ok,false);
+assert.equal(JSON.parse(a.find('x'.repeat(161))).ok,false);
+assert.equal(JSON.parse(a.find('logic','work_second')).matches.length,1);
+r=JSON.parse(a.find('x'));assert.equal(r.matches.length,20);assert.equal(r.more_possible,true);
+console.log('PASS retained-document search beyond excerpts, literal punctuation, offsets, filtering, invalid input and result bounds');

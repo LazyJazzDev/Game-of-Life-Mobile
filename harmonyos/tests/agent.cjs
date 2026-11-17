@@ -22,7 +22,8 @@ const http = { RequestMethod: { POST:'POST' }, createHttp() {
 class Decoder { constructor() { this.value = new TextDecoder(); } decodeToString(bytes, options) { return this.value.decode(bytes, options); } }
 const exportsObject = {};
 vm.runInNewContext(output, {exports:exportsObject, require(name) {return name === '@kit.ArkTS' ? {util:{TextDecoder:Decoder}} : {http};}, setInterval,clearInterval,Date});
-function reply(message, finish = 'stop') {
+function reply(message, finish = 'stop', terminate = true) {
+  if (terminate && !message.tool_calls?.length && message.content) message = {...message, tool_calls:[{id:'done',function:{name:'task_complete',arguments:JSON.stringify({summary:message.content,evidence:['test observation']})}}]};
   const chunks = [];
   if(message.reasoning_content) chunks.push({reasoning_content:message.reasoning_content});
   if(message.content) chunks.push({content:message.content});
@@ -62,6 +63,24 @@ function reply(message, finish = 'stop') {
   a.execute=async()=>{longCalls++;return '{"ok":true}';};
   respond=async()=> ++round<=193 ? reply({tool_calls:Array.from({length:4},(_,i)=>({id:`long-${round}-${i}`,function:{name:'canvas_state',arguments:JSON.stringify({work_brief:'继续核对当前元细胞状态'})}}))},'tool_calls') : reply({content:'全部检查完成。'});
   await a.send('long');assert.equal(round,194);assert.equal(longCalls,772);assert.equal(a.lines.at(-1).text,'全部检查完成。');
+  // A prose-only refusal is not completion; keep executing the original task.
+  round=0; let continued=0;
+  a.execute=async()=>{continued++;return '{"ok":true}';};
+  respond=async()=>{
+    round++;
+    if(round===1) return reply({content:'目前只完成一位，是否继续？'},'stop',false);
+    if(round===2) return reply({tool_calls:[{id:'continue',function:{name:'canvas_state',arguments:'{}'}}]},'tool_calls');
+    if(round===3) return reply({tool_calls:[{id:'invalid',function:{name:'task_complete',arguments:JSON.stringify({summary:'done',evidence:[]})}}]},'tool_calls');
+    return reply({content:'全部验证完成'});
+  };
+  await a.send('full task'); assert.equal(round,4); assert.equal(continued,1);
+  assert.ok(a.trace.some(x=>x.name==='task_complete' && JSON.parse(x.result).ok===false));
+  assert.ok(requests.at(-3).messages.at(-1).content.includes('Audit the original request'));
+  respond=async()=>reply({tool_calls:[{id:'wait',function:{name:'task_wait',arguments:JSON.stringify({question:'请选择需要保留的画布',reason:'destructive_confirmation'})}}]},'tool_calls');
+  await a.send('wait'); assert.equal(a.progress,'等待你的信息'); assert.equal(a.lines.at(-1).text,'请选择需要保留的画布');
+  // Cancellation also interrupts a model that keeps returning prose without tools.
+  round=0; respond=async()=>{if(++round===3) a.cancel();return reply({content:'还在研究'},'stop',false);};
+  await a.send('cancel ongoing audit'); assert.equal(round,3);assert.equal(a.progress,'已停止');
   respond=async()=>({status:401,body:'secret server diagnostic'});
   await a.send('fail');assert.equal(a.busy,false);assert.ok(!a.lines.at(-1).text.includes('secret server diagnostic'));
   a.consent=false;const before=requests.length;await a.send('no consent');assert.equal(requests.length,before);assert.ok(destroyed>0);

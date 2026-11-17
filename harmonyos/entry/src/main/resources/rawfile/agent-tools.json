@@ -617,5 +617,97 @@
         "additionalProperties": false
       }
     }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "research_find",
+      "description": "Search the COMPLETE retained research documents, including text beyond fetch/read excerpts. Case-insensitive literal substring search; returns matching document IDs, offsets and context. Search repository trees for filenames/paths before concluding files are absent.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
+          "query": {
+            "type": "string"
+          },
+          "document": {
+            "type": "string",
+            "description": "Optional document ID; omit to search all documents."
+          }
+        },
+        "required": [
+          "work_brief",
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "task_complete",
+      "description": "Finish ONLY after the entire user request is fulfilled and verified. A partial prototype, failed search, proposal, or smaller substitute is not completion. Summarize the result and cite concrete successful tool observations covering the requirements. For an informational request, the answer itself may fulfill it.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
+          "summary": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "work_brief",
+          "summary",
+          "evidence"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "task_wait",
+      "description": "Pause only when genuinely missing user-specific information or a destructive-action confirmation prevents further authorized work. Do not use for research difficulty, failed URLs, choosing routine implementation steps, or proposing a smaller scope.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
+          "question": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "missing_user_information",
+              "destructive_confirmation"
+            ]
+          }
+        },
+        "required": [
+          "work_brief",
+          "question",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    }
   }
 ]

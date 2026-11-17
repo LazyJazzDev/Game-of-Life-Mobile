@@ -2,6 +2,7 @@ import { http } from '@kit.NetworkKit';
 import { webview } from '@kit.ArkWeb';
 import { util } from '@kit.ArkTS';
 
+interface ResearchMatch { document: string; offset: number; content: string; }
 export interface ResearchTemplate { name: string; rle: string; }
 export interface ResearchValue { templates?: ResearchTemplate[]; result?: Object; }
 export interface ResearchResult { ok: boolean; value?: ResearchValue; output?: string; error?: string; }
@@ -53,6 +54,23 @@ export class AgentResearch {
     const end = Math.min(value.length, start + Math.max(1, Math.min(length, 24000)));
     return JSON.stringify({ ok: true, document: id, url: this.sources[id], length: value.length,
       offset: start, next_offset: end, content: value.slice(start, end), untrusted_source: true });
+  }
+  find(query: string, document: string = ''): string {
+    if (!query || query.length > 160) return '{"ok":false,"error":"invalid_query"}';
+    if (document && this.documents[document] === undefined) return '{"ok":false,"error":"unknown_document"}';
+    const matches: ResearchMatch[] = [];
+    for (const id of document ? [document] : Object.keys(this.documents).sort()) {
+      const value = this.documents[id];
+      // Escaping a literal regex preserves offsets in the original text under case folding.
+      const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      let hit: RegExpExecArray | null;
+      while ((hit = pattern.exec(value)) !== null) {
+        const start = Math.max(0, hit.index - 100);
+        matches.push({document: id, offset: start, content: value.slice(start, hit.index + hit[0].length + 300)});
+        if (matches.length >= 20) return JSON.stringify({ok: true, matches, more_possible: true, untrusted_source: true});
+      }
+    }
+    return JSON.stringify({ok: true, matches, more_possible: false, untrusted_source: true});
   }
   write(name: string, content: string): string {
     if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(name) || new util.TextEncoder().encodeInto(content).length > 1024*1024)
