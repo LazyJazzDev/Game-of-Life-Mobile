@@ -415,7 +415,10 @@ Both produced byte-identical 12298×12298 arrays (36 OTCA metacells, pitch 2048)
 with 1,072,443 cells and template/native-region hash `10639125039446826425`.
 Initial live macro cells are (1,0), (2,1), (0,2), (1,2), (2,2): a southeast glider.
 The phone left the array centered; the simulator used the upper-left world area.
-Both paused and fitted the complete array after placement.
+Both fitted the complete array after placement. The phone explicitly confirmed
+paused state through canvas_state. The simulator Agent reported paused but did
+not read that state back; the later screenshot shows playback active, so no final
+paused-state claim is made for the simulator. Its current UI is left untouched.
 
 An independent bgolly HashLife run on the downloaded phone template decoded all
 36 central displays after warm-up and 12 macro generations (459,264 ordinary
