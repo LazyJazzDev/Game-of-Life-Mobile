@@ -35,7 +35,6 @@ def stage(source: Path, output: Path):
         bundle = Path(temp) / 'Resources'
         bundle.mkdir()
         shutil.copytree(source / 'Patterns', bundle / 'Patterns')
-        shutil.copytree(Path(__file__).resolve().parent.parent / 'mobile' / 'AgentTemplates', bundle / 'AgentTemplates')
         (bundle / 'shaders').mkdir()
         for shader in shaders:
             shutil.copy2(shader, bundle / 'shaders' / shader.name)

@@ -8,6 +8,8 @@ export default class EntryAbility extends UIAbility {
     // Explicit capture arguments only; ordinary launches never seed a board.
     const agentPrompt = want.parameters?.['agentSmoke'];
     AppStorage.setOrCreate('agentSmoke', this.context.applicationInfo.debug && typeof agentPrompt === 'string' ? agentPrompt : '');
+    const researchTest = want.parameters?.['researchSelftest'];
+    AppStorage.setOrCreate('researchSelftest', this.context.applicationInfo.debug && typeof researchTest === 'string' ? researchTest : '');
     AppStorage.setOrCreate('agentForeground', true);
     const pattern = want.parameters?.['capturePattern'];
     const zoom = want.parameters?.['captureZoom'];

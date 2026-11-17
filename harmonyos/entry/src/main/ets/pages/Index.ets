@@ -1,10 +1,13 @@
-import { LifeAgent, AgentArgs, AgentLine } from '../agent/LifeAgent';
+import { AgentResearch, ResearchResult, ResearchValue } from '../agent/AgentResearch';
+import { util } from '@kit.ArkTS';
+import { LifeAgent, AgentArgs, AgentLine, AgentActivity } from '../agent/LifeAgent';
 import { common } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import native from 'libgameoflife.so';
 import { HostedPrivacy } from '../privacy/HostedPrivacy';
 
+interface NativeTemplateResult { ok: boolean; error?: string; }
 interface PatternFile { name: string; modified: number; }
 // A named pattern from the built-in Life Lexicon library (demo/gol/patterns/library.json).
 interface BuiltinPattern {
@@ -137,8 +140,13 @@ class FileOperationError extends Error {
 struct Index {
   @StorageLink('agentForeground') @Watch('agentVisibilityChanged') private agentForeground: boolean = true;
   private agentSmokeStarted: boolean = false;
+  private researchTestStarted: boolean = false;
   private agentKeyImported: boolean = false;
   private agent: LifeAgent = new LifeAgent();
+  private research: AgentResearch = new AgentResearch();
+  @State private agentLive: string = '';
+  @State private agentActivities: AgentActivity[] = [];
+  @State private agentElapsed: number = 0;
   @State private agentSettings: boolean = false;
   @State private agentVisible: boolean = false;
   @State private agentBusy: boolean = false;
@@ -211,19 +219,15 @@ struct Index {
       }
       this.agentBusy = this.agent.busy; this.agentProgress = this.agent.progress;
       this.agentLines = this.agent.lines.slice();
+      this.agentLive = this.agent.liveResponse;
+      this.agentActivities = this.agent.activities.slice();
+      const last = this.agentActivities[this.agentActivities.length-1];
+      this.agentElapsed = last ? Math.floor((Date.now()-last.started)/1000) : 0;
       this.agentScroller.scrollEdge(Edge.Bottom);
     };
-    if (this.context().applicationInfo.debug) {
-      try {
-        const keyFile = `${this.context().filesDir}/deepseek-api.key`;
-        this.agentKey = fs.readTextSync(keyFile).trim(); fs.unlinkSync(keyFile);
-        this.agentKeyImported = this.agentKey.length > 0;
-      } catch (_) { }
-    }
+    this.agent.cancelResearch = () => this.research.cancel();
     this.agent.execute = (name: string, args: AgentArgs) => this.agentTool(name, args);
-    this.context().resourceManager.getRawFileContent('agent-tools.json').then((bytes: Uint8Array) => {
-      this.agent.tools = JSON.parse(String.fromCharCode(...bytes)) as Object[];
-    });
+    this.loadAgentAssets();
     // Subscribe before querying so agreement during startup cannot be missed.
     this.privacy.observe(() => this.checkPrivacy()).then(() => {
       if (!this.pageAlive) return;
@@ -324,8 +328,20 @@ struct Index {
       const value = JSON.parse(native.status()) as NativeStatus;
       if (value.ready === undefined) return;
       this.stats = value;
+      const researchTest = AppStorage.get<string>('researchSelftest') ?? '';
+      if (researchTest.length > 0 && !this.researchTestStarted) {
+        const f = fs.openSync(`${this.context().filesDir}/ResearchStartup.json`, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+        fs.writeSync(f.fd, JSON.stringify({ready: this.research.ready, engine: this.research.engine.length, frames: value.frames, toolCount: this.agent.tools.length, keyReady: this.agentKeyImported})); fs.closeSync(f);
+      }
+      if (value.ready && this.opened && researchTest.length > 0 && this.research.ready && this.research.engine.length > 0 && !this.researchTestStarted) {
+        this.researchTestStarted = true; this.agent.busy = true; this.agentConsent = true;
+        this.agentTool('research_script', { code: researchTest, language: 'python' }).then((result: string) => {
+          const f = fs.openSync(`${this.context().filesDir}/ResearchSelftest.json`, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+          fs.writeSync(f.fd, result); fs.closeSync(f); this.agent.busy = false;
+        });
+      }
       const smoke = AppStorage.get<string>('agentSmoke') ?? '';
-      if (value.frames > 2 && smoke.length > 0 && !this.agentSmokeStarted && this.agentKeyImported) {
+      if (value.ready && this.opened && smoke.length > 0 && !this.agentSmokeStarted && this.agentKeyImported && this.research.ready) {
         this.agentSmokeStarted = true; this.agentVisible = true; this.agentConsent = true;
         this.agentInput = smoke; this.agentSend();
       }
@@ -920,6 +936,20 @@ struct Index {
     this.sendBottomInset();
   }
 
+  private async agentRaw(name: string): Promise<string> {
+    const bytes = await this.context().resourceManager.getRawFileContent(name);
+    return new util.TextDecoder('utf-8').decodeToString(bytes);
+  }
+  private async loadAgentAssets(): Promise<void> {
+    try {
+      this.agent.tools = JSON.parse(await this.agentRaw('agent-tools.json')) as Object[];
+      this.agent.systemPrompt = await this.agentRaw('agent-system.txt');
+      this.research.engine = await this.agentRaw('hashlife/life.js') + '\n' + await this.agentRaw('hashlife/adapter.js');
+      this.agentKey = (await this.agentRaw('AgentCredential.key')).trim();
+      this.agentKeyImported = this.agentKey.length > 0;
+    } catch (error) { this.agentProgress = this.agent.text('研究工具初始化失败', 'Research tools failed to initialize'); console.error('Agent asset load: ' + (error as Error).message); }
+  }
+
   private agentVisibilityChanged(): void {
     if (!this.agentForeground) this.agent.cancel();
   }
@@ -938,23 +968,35 @@ struct Index {
 
   private async agentTool(name: string, args: AgentArgs): Promise<string> {
     if (!this.agentConsent || !this.privacyAgreed || !this.agent.busy) return '{"ok":false}';
-    if (name === 'knowledge_sources') return 'Life Lexicon: https://github.com/dvgrn/life-lexicon ; LifeWiki: https://conwaylife.com/wiki/Main_Page ; OTCA metapixel: https://conwaylife.com/wiki/OTCA_metapixel ; Golly: https://golly.sourceforge.io/ . References only, not fetched.';
-    if (name === 'pattern_search' || name === 'pattern_place') {
-      const catalog = JSON.parse(fs.readTextSync(`${this.stats.resources}/Patterns/library.json`)) as PatternDocument;
-      if (name === 'pattern_search') {
-        const query = (args.query ?? '').toLowerCase();
-        return JSON.stringify(catalog.patterns.filter((p: BuiltinPattern) => p.name.toLowerCase().includes(query) || p.category.includes(query)).slice(0, 12));
-      }
-      const p = catalog.patterns.find((p: BuiltinPattern) => p.name === args.name);
-      if (!p || p.width*p.height > 4096 || args.x === undefined || args.y === undefined) return '{"ok":false,"error":"invalid_pattern_or_position"}';
-      const lines = patternCells(p).split('\n').filter((line: string) => !line.startsWith('!'));
-      const cells: number[][] = [];
-      for (let y = 0; y < lines.length; y++) for (let x = 0; x < lines[y].length; x++) {
-        cells.push([args.x-Math.floor(p.width/2)+x, args.y-Math.floor(p.height/2)+y, lines[y][x] === 'O' ? 1 : 0]);
-      }
-      return this.agentNative({ action: 'edit', cells: cells });
+    if (name === 'knowledge_sources') return this.agentRaw('knowledge-sources.json');
+    if (name === 'research_fetch') return this.research.fetch(args.url ?? '');
+    if (name === 'research_read') return this.research.read(args.document ?? '', args.offset ?? 0, args.length ?? 12000);
+    if (name === 'research_write') return this.research.write(args.name ?? '', args.content ?? '');
+    if (name === 'template_from_document') {
+      const content = this.research.content(args.document ?? '');
+      if (content === undefined) return '{"ok":false,"error":"unknown_document"}';
+      return this.agentNative({ action: 'template_save', name: args.name, rle: content });
     }
-    if (name === 'metacell_guide' || name === 'template_save' || name === 'template_list' || name === 'template_info' || name === 'template_compose' || name === 'template_place') { args.action = name; return this.agentNative(args); }
+    if (name === 'research_script') {
+      const raw = await this.research.script(args.code ?? '', args.language ?? 'javascript');
+      const execution = JSON.parse(raw) as ResearchResult;
+      if (!execution.ok || !execution.value) return raw;
+      const value = execution.value;
+      const saves: Object[] = [];
+      let ok = true;
+      if ((value.templates?.length ?? 0) > 64) return '{"ok":false,"error":"too_many_templates"}';
+      for (const template of value.templates ?? []) {
+        if (!this.agent.busy) return '{"ok":false,"error":"cancelled"}';
+        const saved = JSON.parse(await this.agentNative({action: 'template_save', name: template.name, rle: template.rle})) as NativeTemplateResult;
+        ok = ok && saved.ok; saves.push(saved);
+      }
+      const summary: Record<string, Object> = {};
+      const fields = value as Record<string, Object>;
+      for (const key of Object.keys(fields)) if (key !== 'templates') summary[key] = fields[key];
+      const response = JSON.stringify({ok: ok, result: value.result ?? summary, template_results: saves, output: execution.output ?? ''});
+      return response.length > 48000 ? '{"ok":false,"error":"script_result_too_large"}' : response;
+    }
+    if (name === 'template_save' || name === 'template_list' || name === 'template_info' || name === 'template_compose' || name === 'template_place') { args.action = name; return this.agentNative(args); }
     if (name === 'canvas_fit') { args.action = 'fit'; return this.agentNative(args); }
     if (name === 'canvas_summary') { args.action = 'summary'; return this.agentNative(args); }
     if (name === 'canvas_state') return this.agentNative({ action: 'state' });
@@ -978,7 +1020,7 @@ struct Index {
       if (this.agentBusy) {
         Row({ space: 8 }) {
           LoadingProgress().width(18).height(18).color(TINT)
-          Text(this.agentProgress).fontSize(13).fontColor(LABEL)
+          Text(`${this.agentProgress} · ${this.agentElapsed}s`).fontSize(13).fontColor(LABEL)
         }.padding(10).borderRadius(24).backgroundColor('#B32C2C2E').backdropBlur(20)
       }
       if (this.agentVisible) {
@@ -990,11 +1032,9 @@ struct Index {
             Button(this.agent.text('收起', 'Close')).onClick(() => { this.agentVisible = false; })
           }.width('100%')
           if (this.agentSettings || !this.agentConsent || !this.agentKey.length) {
-            TextInput({ placeholder: 'DeepSeek API Key', text: this.agentKey }).type(InputType.Password)
-              .onChange((value: string) => { this.agentKey = value; })
             Row({ space: 8 }) {
               Checkbox().select(this.agentConsent).onChange((value: boolean) => { this.agentConsent = value; if (!value) this.agent.cancel(); })
-              Text(this.agent.text('将消息与必要画布数据发送给 DeepSeek。密钥仅在本次会话内存中保存。', 'Send messages and necessary canvas data to DeepSeek. The key stays in memory for this session.'))
+              Text(this.agent.text('允许将消息与必要画布数据发送给 DeepSeek，以使用 Agent。', 'Allow messages and necessary canvas data to be sent to DeepSeek to use the Agent.'))
                 .fontSize(12).fontColor(SECONDARY).layoutWeight(1)
             }
           }
@@ -1007,6 +1047,13 @@ struct Index {
                   Text(line.text).fontSize(16).fontColor(LABEL).copyOption(CopyOptions.InApp)
                 }.width('100%').alignItems(HorizontalAlign.Start)
               }, (line: AgentLine, index: number) => `${index}`)
+              if (this.agentLive.length > 0) { Text(this.agentLive).fontSize(16).fontColor(LABEL).width('100%') }
+              ForEach(this.agentActivities, (item: AgentActivity, index: number) => {
+                Column({ space: 3 }) {
+                  Text(`${item.failed ? '!' : item.finished ? '✓' : '…'} ${item.title}`).fontSize(13).fontColor(item.failed ? '#FF9F0A' : LABEL)
+                  if (item.detail.length > 0) { Text(item.detail).fontSize(12).fontColor(SECONDARY).maxLines(3).textOverflow({overflow: TextOverflow.Ellipsis}) }
+                }.width('100%').alignItems(HorizontalAlign.Start)
+              }, (item: AgentActivity, index: number) => `${item.started}-${index}`)
             }.width('100%').alignItems(HorizontalAlign.Start)
           }.height(this.areaHeight > 500 ? 230 : 100).width('100%')
           Row({ space: 8 }) {
@@ -1026,6 +1073,11 @@ struct Index {
 
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
+      Web({ src: $rawfile('research.html'), controller: this.research.controller })
+        .javaScriptAccess(true).domStorageAccess(false).fileAccess(false)
+        .javaScriptProxy({ object: this.research.bridge, name: 'researchBridge', methodList: ['finish'], controller: this.research.controller })
+        .onPageEnd(() => { this.research.ready = true; })
+        .width(1).height(1).opacity(0).hitTestBehavior(HitTestMode.None)
       // The canvas fills the display; the page stays blank until resources are ready.
       if (this.privacyAgreed && this.opened) {
         Stack() { this.surface() }

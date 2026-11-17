@@ -11,6 +11,7 @@ export PATH="$NODE_HOME/bin:$PATH"
 BUILD_MODE="${BUILD_MODE:-debug}"
 TASK="${TASK:-assembleHap}"
 cd "$(dirname "$0")"
+python3 prepare_agent.py
 # DevEco's native build cannot take CMake arguments; the mobile dependencies
 # default to out/mobile/deps in the repository root.
 export LONGMARCH_MOBILE_DEPS="${LONGMARCH_MOBILE_DEPS:-$(cd .. && pwd)/out/mobile/deps}"
