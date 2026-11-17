@@ -68,6 +68,8 @@ import WebKit
     let body="""
     return await new Promise((resolve,reject)=>{
       const source = engine + `\nconst originalFetch=self.fetch, originalImport=self.importScripts; self.fetch=undefined; self.XMLHttpRequest=undefined; self.WebSocket=undefined; self.importScripts=undefined;
+      const emitLog=text=>self.postMessage({log:String(text)});
+      console.log=(...parts)=>emitLog(parts.map(String).join(' '));
       self.onmessage=async e=>{try {
         let result;
         if(e.data.language==='python') {
@@ -75,12 +77,13 @@ import WebKit
           importScripts('https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js');
           const py=await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/'});
           self.fetch=undefined; self.importScripts=undefined;
+          py.setStdout({batched:emitLog});py.setStderr({batched:emitLog});
           py.globals.set('documents',py.toPy(e.data.documents));
           py.globals.set('_evolve', (cells,n)=>life.evolve(cells.toJs ? cells.toJs() : cells,n));
           py.globals.set('_parse_rle', text=>life.parseRLE(text));
           py.globals.set('_encode_rle', cells=>life.encodeRLE(cells.toJs ? cells.toJs() : cells));
-          py.runPython('def life_evolve(cells, generations):'+String.fromCharCode(10)+'    return _evolve(cells, generations).to_py()');
-          py.runPython('def life_parse_rle(text):'+String.fromCharCode(10)+'    return _parse_rle(text).to_py()'+String.fromCharCode(10)+'def life_encode_rle(cells):'+String.fromCharCode(10)+'    return _encode_rle(cells).to_py()');
+          py.runPython('def life_evolve(cells, generations):'+String.fromCharCode(10)+'    return _evolve([list(p) for p in cells], generations).to_py()');
+          py.runPython('def life_parse_rle(text):'+String.fromCharCode(10)+'    return _parse_rle(text).to_py()'+String.fromCharCode(10)+'def life_encode_rle(cells):'+String.fromCharCode(10)+'    return _encode_rle([list(p) for p in cells]).to_py()');
           await py.runPythonAsync(e.data.code);
           const value=py.globals.get('result');
           result=value && value.toJs ? value.toJs({dict_converter:Object.fromEntries}) : value;
@@ -91,9 +94,14 @@ import WebKit
       const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
       const worker=new Worker(url);
       const stop=()=>{worker.terminate();URL.revokeObjectURL(url);};
-      const timer=setTimeout(()=>{stop();resolve({ok:false,error:'execution_timeout'});},60000);
-      worker.onmessage=e=>{clearTimeout(timer);stop();resolve(e.data);};
-      worker.onerror=e=>{clearTimeout(timer);stop();resolve({ok:false,error:e.message});};
+      let output='';
+      const finish=value=>{clearTimeout(timer);stop();resolve({...value,output});};
+      const timer=setTimeout(()=>finish({ok:false,error:'execution_timeout'}),60000);
+      worker.onmessage=e=>{
+        if(typeof e.data.log==='string'){output=(output+e.data.log+String.fromCharCode(10)).slice(-16000);return;}
+        finish(e.data);
+      };
+      worker.onerror=e=>finish({ok:false,error:e.message});
       worker.postMessage({code,documents,language});
     });
     """

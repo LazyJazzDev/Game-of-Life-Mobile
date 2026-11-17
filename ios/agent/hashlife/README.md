@@ -12,3 +12,9 @@ RLE normalized to the bounding box and `origin` retaining the signed offset.
 Python scripts use `life_parse_rle` and `life_encode_rle`. Neither codec contains
 patterns or source-specific adapters. Run `node ios/tests/research_life.cjs` to
 check exact evolution and codec behavior.
+
+`ios/tests/research_runtime.py` exercises the actual Python/JavaScript bridge
+through `LONGMARCH_RESEARCH_SELFTEST` in a clean simulator installation. It checks
+list subclasses with overridden indexing as well as captured stdout. Worker
+stdout/stderr and JavaScript console output are retained (last 16000 characters)
+even when the execution deadline is reached.

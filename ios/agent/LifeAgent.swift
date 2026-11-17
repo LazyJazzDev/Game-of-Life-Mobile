@@ -314,7 +314,7 @@ struct AgentActivity: Identifiable {
       }
       var summary=value
       summary.removeValue(forKey:"templates")
-      let response:[String:Any] = ["ok":allSaved,"result":value["result"] ?? summary,"template_results":saves]
+      let response:[String:Any] = ["ok":allSaved,"result":value["result"] ?? summary,"template_results":saves,"output":execution["output"] ?? ""]
       let data=try JSONSerialization.data(withJSONObject:response)
       guard data.count <= 48000 else { throw AgentFailure.truncated }
       return String(decoding:data,as:UTF8.self)
