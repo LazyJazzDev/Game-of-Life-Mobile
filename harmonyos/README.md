@@ -310,3 +310,80 @@ writes `files/ResearchSelftest.json` through the same research/tool wrapper.
 Both wait for native readiness rather than a rendered-frame count, since a
 paused canvas may render only one frame. Do not copy previous workspace or
 conversation state into fresh full trials.
+
+
+### Mate 70 autonomous OTCA verification (build 105)
+
+A fresh uninstall/install trial on physical Mate 70 (PLU-AL10) completed with
+`deepseek-flash`, high reasoning, and 72 tool calls. The only supplied task was
+to independently research, construct and verify a genuine 6×6 B3/S23 OTCA array.
+No previous workspace, construction recipe, coordinates or OTCA template was
+injected. The Agent fetched public sources, implemented its own Golly pattern
+adapter, corrected its rule-bit and RLE/template composition mistakes, and
+saved `otca_off_b3s23`, `otca_on_b3s23` and `otca6x6_rpent2`.
+
+Independent checks used artifacts downloaded from this phone, not the earlier
+iOS run. Both unit templates matched canonical reference cell sets exactly.
+The final 12,298×12,298 array contains 1,072,443 live cells and represents a
+6×6 macro grid with initial live positions (2,2), (3,2), (1,3), (2,3), (2,4).
+An independent bgolly HashLife run decoded each tile's central display and
+matched ordinary B3/S23 at generation 0, the 35,328-generation warm-up, and
+macro generations 1–3 (70,656, 105,984 and 141,312 actual generations).
+The phone Agent also tested an L-to-block transition and a small glider array.
+
+Native placement at (-6149,-6149) reported the same region population and hash
+as the saved template: `4488188516091322777`. The full canvas population was also
+1,072,443, with no extra cells. `canvas_fit` succeeded and final `canvas_state`
+confirmed paused. Evolution verification used research HashLife plus independent
+bgolly; this does not claim native GPU execution of 141,312 generations.
+
+Local evidence: `out/agent/mate70-otca105/AgentSmoke.json`, downloaded RLE files,
+`independent-saved-units.json`, `independent-array-verification.json`,
+`verify-array.py` and `final.jpeg`. The screenshot includes the open Agent panel
+over the fitted canvas. The phone retains build 105 and its successful canvas.
+The subsequent source fix preserving primitive/array research results was built
+but not installed during this trial, to avoid interrupting or replacing it.
+
+
+### Agent work visualization (1.0.3 build 109 / iOS build 30)
+
+Agent work automatically collapses the conversation into the compact status/input
+bar with Stop. Completion, cancellation and failure leave a visible outcome.
+Source code and fetched documents stay in the background; only the latest action
+is shown. No Web canvas, large research panel or system frame covers the app.
+
+Research snapshots temporarily replace the native canvas's displayed cell buffers.
+A separate TiledLife instance uses the same CellGridTheme shader, grid detail,
+contrast, mipmaps and viewport rendering, with pale-blue live cells. Dead cells, gaps and the background retain their original colors. The original
+canvas remains authoritative for saves and resumes when research finishes or is
+stopped. The preview is read-only; panning and zooming remain available.
+
+`mobile/agent-preview.js` transports exact RLE snapshots from research codecs and
+HashLife input/intermediate/final generations. For unbounded results larger than
+16384 cells per axis it supplies occupied display bins with an explicit stride;
+these display bins never feed back into evolution. Native template saves and
+compositions also focus the template on the research canvas. Preview delivery is
+coalesced and generation-guarded so canceled workers cannot replace a later view.
+The hidden 1x1 Harmony Web / offscreen iOS WKWebView only executes research code.
+
+Native Agent reads, edits, summaries and placement return to the real canvas and
+focus their region. Camera center and log-scale interpolate over 350 ms; manual
+camera input can interrupt. Stop terminates research workers and restores the
+original canvas and view, with no fabricated evolution animation.
+
+Validation: both platform builds; HashLife's 480 reference comparisons and 100 RLE
+codec cases; snapshot/checkpoint and cancellation regressions; native
+`gol_agent_check` verifying original-buffer isolation, byte-identical saves during
+preview, restoration, and smooth camera interruption. A factory-state iOS build
+29 trial independently checked 64 blinkers through 1001 generations, then placed
+192 cells with matching template/canvas hashes. Evidence is under
+`out/agent/native-ios29/` and `out/agent/native-preview-*.log`.
+The final iOS self-test also checks live research streaming and Stop restoration.
+Deferred native preview creation rebinds the offline shader cache on each Agent
+command: serial GCD queues can change OS threads between initialization and work.
+
+Mate 70 build 109 ran a Python research-worker blinker through 30 live checkpoints
+and returned population 3, then restored the main canvas. iOS build 30 streamed
+the same native preview via JavaScript. Screenshots confirm that only live cells
+are blue, with unchanged dead-cell/background colors; no Web panel is displayed.
+Evidence: `out/agent/native-mate109/`, `out/agent/native-ios30/`.

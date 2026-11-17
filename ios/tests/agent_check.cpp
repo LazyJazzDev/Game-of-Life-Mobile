@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <thread>
 
 #include "demos/DemoSession.h"
 #include "grassland/rhi/shader_cache.h"
@@ -14,7 +15,7 @@ int main(int argc, char **argv) {
   session.Resize(640, 800);
   session.Render();
   auto run = [&](const std::string &json, bool expected = true) {
-    auto result = session.Game()->AgentCommand(json);
+    auto result = session.AgentCommand(json);
     rapidjson::Document d;
     d.Parse(result.c_str());
     if (d.HasParseError() || !d.HasMember("ok") || d["ok"].GetBool() != expected) {
@@ -40,7 +41,58 @@ int main(int argc, char **argv) {
   for (int i = 0; i < 3; ++i)
     if (d["alive"][i][0].GetInt() != 1001 || d["alive"][i][1].GetInt() != 1000 + i)
       return 4;
+  const auto preview_dir =
+      std::filesystem::temp_directory_path() /
+      ("life-preview-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+  std::filesystem::create_directories(preview_dir);
+  const auto before_file = preview_dir / "before.gol", during_file = preview_dir / "during.gol";
+  if (!session.Game()->SaveSession(before_file.string()).empty())
+    return 46;
+  // GCD serial queues can migrate threads after initialization.
+  std::thread([&] { run(R"({"action":"preview","rle":"x=3,y=1,rule=B3/S23\n3o!"})"); }).join();
+  session.Render();
+  run(R"({"action":"preview","rle":"x=3,y=3,rule=B3/S23\nbo$2bo$3o!"})");
+  session.Render();
+  if (!session.Game()->SaveSession(during_file.string()).empty())
+    return 47;
+  auto bytes = [](const std::filesystem::path &path) {
+    std::ifstream file(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(file), {});
+  };
+  if (bytes(before_file) != bytes(during_file))
+    return 48;
+  run(R"({"action":"preview_end"})");
+  session.Render();
+  if (run(R"({"action":"read","x":1000,"y":1000,"width":3,"height":3})") != result)
+    return 49;
+  std::filesystem::remove_all(preview_dir);
+  std::cout << "PASS native research buffer isolation, main-canvas save during preview, and restoration\n";
+  run(R"({"action":"view_stop","value":0})");
+  auto zoom = [&] {
+    rapidjson::Document state;
+    state.Parse(run(R"({"action":"state"})").c_str());
+    return state["zoom"].GetDouble();
+  };
+  const double start_zoom = zoom();
   run(R"({"action":"view","value":2,"x":1001,"y":1001})");
+  if (zoom() != start_zoom)
+    return 43;  // Scheduling a camera move must not jump immediately.
+  bool intermediate = false;
+  const auto begin = std::chrono::steady_clock::now();
+  while (std::chrono::steady_clock::now() - begin < std::chrono::milliseconds(450)) {
+    session.Render();
+    const auto current = zoom();
+    intermediate |= current != start_zoom && std::abs(current - 2.0) > 1.0e-5;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  if (!intermediate || std::abs(zoom() - 2.0) > 1.0e-5)
+    return 44;
+  run(R"({"action":"view","value":4,"x":0,"y":0})");
+  run(R"({"action":"view_stop","value":0})");
+  session.Render();
+  if (std::abs(zoom() - 2.0) > 1.0e-5)
+    return 45;
+  std::cout << "PASS smooth camera transition and cancellation without a zoom jump\n";
   run(R"({"action":"reset"})");
   if (session.Game()->ConfirmationRequest() != 1)
     return 5;

@@ -31,6 +31,7 @@ tools/*.key
 harmonyos/entry/src/main/resources/rawfile/AgentCredential.key
 harmonyos/entry/src/main/resources/rawfile/agent-system.txt
 harmonyos/entry/src/main/resources/rawfile/agent-research.js
+harmonyos/entry/src/main/resources/rawfile/agent-preview.js
 harmonyos/entry/src/main/resources/rawfile/research.html
 harmonyos/entry/src/main/resources/rawfile/knowledge-sources.json
 harmonyos/entry/src/main/resources/rawfile/hashlife/

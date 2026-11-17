@@ -4,6 +4,7 @@
 
 #include "games/DesktopGameSession.h"
 #include "grassland/rhi/rhi.h"
+#include "grassland/rhi/shader_cache.h"
 
 // Configures the prepared RHI shader bundle and hosts the Game of Life.
 class DemoSession {
@@ -12,6 +13,13 @@ class DemoSession {
               bool prepare = false,
               grassland::rhi::BackendAPI backend = grassland::rhi::BACKEND_API_DEFAULT);
   ~DemoSession();
+
+  std::string AgentCommand(const std::string &json) {
+    // A serial GCD queue can migrate between OS threads. Rebind the thread-local
+    // offline cache before lazily creating research-canvas GPU resources.
+    grassland::rhi::ConfigureShaderCache(shader_cache_);
+    return game_->AgentCommand(json);
+  }
 
   void Resize(int width, int height) {
     game_->Resize(width, height);
@@ -34,5 +42,6 @@ class DemoSession {
   }
 
  private:
+  grassland::rhi::ShaderCacheSettings shader_cache_;
   std::unique_ptr<DesktopGameSession> game_;
 };

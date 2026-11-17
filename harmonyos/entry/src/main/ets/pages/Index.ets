@@ -146,6 +146,10 @@ struct Index {
   private agent: LifeAgent = new LifeAgent();
   private research: AgentResearch = new AgentResearch();
   @State private agentLive: string = '';
+  private agentPreviewPending: string = '';
+  private agentPreviewTimer: number = -1;
+  private agentNativeInFlight: number = 0;
+  @State private agentOutcome: string = '';
   @State private agentActivities: AgentActivity[] = [];
   @State private agentElapsed: number = 0;
   @State private agentSettings: boolean = false;
@@ -157,6 +161,7 @@ struct Index {
   @State private agentConsent: boolean = false;
   @State private agentLines: AgentLine[] = [];
   private agentSequence: number = 0;
+  private agentVisualRun: number = 0;
   private agentScroller: Scroller = new Scroller();
   private privacy: HostedPrivacy = new HostedPrivacy();
   private pageAlive: boolean = false;
@@ -224,6 +229,15 @@ struct Index {
           fs.writeSync(f.fd, proof); fs.closeSync(f);
         }
       }
+      if (!this.agentBusy && this.agent.busy) {
+        this.agentVisualRun++;
+        this.agentVisible = false; this.agentOutcome = '';
+      }
+      if (this.agentBusy && !this.agent.busy) {
+        this.agentVisualRun++;
+        this.endAgentPreview(); this.research.hide();
+        this.agentOutcome = this.agent.progress;
+      }
       this.agentBusy = this.agent.busy; this.agentProgress = this.agent.progress;
       this.agentLines = this.agent.lines.slice();
       this.agentLive = this.agent.liveResponse;
@@ -232,7 +246,11 @@ struct Index {
       this.agentElapsed = last ? Math.floor((Date.now()-last.started)/1000) : 0;
       this.agentScroller.scrollEdge(Edge.Bottom);
     };
-    this.agent.cancelResearch = () => this.research.cancel();
+    this.research.visualChanged = (value: string) => this.queueAgentPreview(value);
+    this.agent.cancelResearch = () => {
+      this.send({ type: 'agent', request: ++this.agentSequence, payload: '{"action":"view_stop","value":0}' });
+      this.endAgentPreview(); this.research.cancel();
+    };
     this.agent.execute = (name: string, args: AgentArgs) => this.agentTool(name, args);
     this.loadAgentAssets();
     // Subscribe before querying so agreement during startup cannot be missed.
@@ -341,10 +359,10 @@ struct Index {
         fs.writeSync(f.fd, JSON.stringify({ready: this.research.ready, engine: this.research.engine.length, frames: value.frames, toolCount: this.agent.tools.length, keyReady: this.agentKeyImported})); fs.closeSync(f);
       }
       if (value.ready && this.opened && researchTest.length > 0 && this.research.ready && this.research.engine.length > 0 && !this.researchTestStarted) {
-        this.researchTestStarted = true; this.agent.busy = true; this.agentConsent = true;
+        this.researchTestStarted = true; this.agent.busy = true; this.agentConsent = true; this.agent.progress = this.agent.text('验证原生研究画布…', 'Checking native research canvas…'); this.agent.changed();
         this.agentTool('research_script', { code: researchTest, language: 'python' }).then((result: string) => {
           const f = fs.openSync(`${this.context().filesDir}/ResearchSelftest.json`, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
-          fs.writeSync(f.fd, result); fs.closeSync(f); this.agent.busy = false;
+          fs.writeSync(f.fd, result); fs.closeSync(f); this.agent.busy = false; this.agent.progress = this.agent.text('已完成', 'Finished'); this.agent.changed();
         });
       }
       const smoke = AppStorage.get<string>('agentSmoke') ?? '';
@@ -962,18 +980,67 @@ struct Index {
   }
 
   private async agentNative(args: AgentArgs): Promise<string> {
+    const run = this.agentVisualRun;
+    this.agentNativeInFlight++;
+    try {
     const id = ++this.agentSequence;
     native.command(JSON.stringify({ type: 'agent', request: id, payload: JSON.stringify(args) }));
     for (let count = 0; count < 200; count++) {
       await new Promise<void>((resolve: () => void) => { setTimeout(resolve, 50); });
+      if (run !== this.agentVisualRun) return '{"ok":false,"error":"cancelled"}';
       const status = JSON.parse(native.status()) as NativeStatus;
-      if (status.agentId === id) return status.agentReply;
+      if (status.agentId === id) {
+        if (this.agent.busy && (args.action === 'template_save' || args.action === 'template_compose' || args.action === 'template_info')) {
+          const result = JSON.parse(status.agentReply) as NativeTemplateResult;
+          if (result.ok && args.name) this.showAgentTemplate(args.name);
+        }
+        return status.agentReply;
+      }
       if (!this.pageAlive || !this.agent.busy) return '{"ok":false,"error":"cancelled"}';
     }
     return '{"ok":false,"error":"timeout_do_not_repeat_mutation"}';
+    } finally { this.agentNativeInFlight--; }
+  }
+
+  private queueAgentPreview(value: string): void {
+    if (!this.agent.busy) return;
+    this.agentPreviewPending = value;
+    if (this.agentPreviewTimer >= 0) return;
+    const run = this.agentVisualRun;
+    this.agentPreviewTimer = setTimeout(() => {
+      this.agentPreviewTimer = -1;
+      if (!this.agent.busy || run !== this.agentVisualRun) { this.agentPreviewPending = ''; return; }
+      const frame = this.agentPreviewPending;
+      if (this.agentNativeInFlight > 0) { this.queueAgentPreview(frame); return; }
+      this.agentPreviewPending = '';
+      const data = JSON.parse(frame) as AgentArgs;
+      if (typeof data.rle === 'string') this.send({ type: 'agent', request: ++this.agentSequence,
+        payload: JSON.stringify({action: 'preview', rle: data.rle}) });
+    }, 100);
+  }
+
+  private endAgentPreview(): void {
+    clearTimeout(this.agentPreviewTimer); this.agentPreviewTimer = -1; this.agentPreviewPending = '';
+    this.send({ type: 'agent', request: ++this.agentSequence, payload: '{"action":"preview_end"}' });
+  }
+
+  private showAgentTemplate(name: string): void {
+    if (!this.agent.busy) return;
+    clearTimeout(this.agentPreviewTimer); this.agentPreviewTimer = -1; this.agentPreviewPending = '';
+    this.send({ type: 'agent', request: ++this.agentSequence,
+      payload: JSON.stringify({action: 'preview_template', name: name}) });
   }
 
   private async agentTool(name: string, args: AgentArgs): Promise<string> {
+    if (!this.agent.busy) return '{"ok":false,"error":"cancelled"}';
+    const run = this.agentVisualRun;
+    if (name.startsWith('canvas_') || name === 'template_place') {
+      this.endAgentPreview(); this.research.hide();
+    }
+    return this.runAgentTool(name, args, run);
+  }
+
+  private async runAgentTool(name: string, args: AgentArgs, run: number): Promise<string> {
     if (!this.agentConsent || !this.privacyAgreed || !this.agent.busy) return '{"ok":false}';
     if (name === 'knowledge_sources') return this.agentRaw('knowledge-sources.json');
     if (name === 'research_fetch') return this.research.fetch(args.url ?? '');
@@ -986,6 +1053,7 @@ struct Index {
     }
     if (name === 'research_script') {
       const raw = await this.research.script(args.code ?? '', args.language ?? 'javascript');
+      if (run !== this.agentVisualRun) return '{"ok":false,"error":"cancelled"}';
       const execution = JSON.parse(raw) as ResearchResult;
       if (!execution.ok || !execution.value || typeof execution.value !== 'object' || Array.isArray(execution.value)) return raw;
       const value = execution.value;
@@ -993,7 +1061,7 @@ struct Index {
       let ok = true;
       if ((value.templates?.length ?? 0) > 64) return '{"ok":false,"error":"too_many_templates"}';
       for (const template of value.templates ?? []) {
-        if (!this.agent.busy) return '{"ok":false,"error":"cancelled"}';
+        if (!this.agent.busy || run !== this.agentVisualRun) return '{"ok":false,"error":"cancelled"}';
         const saved = JSON.parse(await this.agentNative({action: 'template_save', name: template.name, rle: template.rle})) as NativeTemplateResult;
         ok = ok && saved.ok; saves.push(saved);
       }
@@ -1024,12 +1092,6 @@ struct Index {
   @Builder
   private agentOverlay() {
     Column({ space: 10 }) {
-      if (this.agentBusy) {
-        Row({ space: 8 }) {
-          LoadingProgress().width(18).height(18).color(TINT)
-          Text(`${this.agentProgress} · ${this.agentElapsed}s`).fontSize(13).fontColor(LABEL)
-        }.padding(10).borderRadius(24).backgroundColor('#B32C2C2E').backdropBlur(20)
-      }
       if (this.agentVisible) {
         Column({ space: 10 }) {
           Row() {
@@ -1071,26 +1133,36 @@ struct Index {
           }
         }.padding(16).width('100%').borderRadius(24).backgroundColor('#D91C1C1E').backdropBlur(24)
       } else {
-        TextInput({ placeholder: this.agent.text('让 Agent 帮你探索…', 'Explore with Agent…') })
-          .height(48).borderRadius(24).backgroundColor('#A62C2C2E').backdropBlur(24)
-          .onClick(() => { this.agentVisible = true; setTimeout(() => { focusControl.requestFocus('agent-message-input'); }, 100); })
+        Row({ space: 8 }) {
+          if (this.agentBusy) { LoadingProgress().width(18).height(18).color('#9BD7FF') }
+          Text(this.agentBusy ? `${this.agentProgress} · ${this.agentElapsed}s` : this.agentOutcome || this.agent.text('让 Agent 帮你探索…', 'Explore with Agent…'))
+            .fontSize(14).fontColor(this.agentBusy ? '#C6E8FF' : LABEL).maxLines(2).layoutWeight(1)
+            .onClick(() => { this.agentVisible = true; })
+          if (this.agentBusy) {
+            Button(this.agent.text('停止', 'Stop')).fontSize(14).backgroundColor('#345C78').onClick(() => this.agent.cancel())
+          } else {
+            Button(this.agentOutcome.length ? this.agent.text('查看', 'View') : this.agent.text('输入', 'Write')).fontSize(14)
+              .onClick(() => { this.agentVisible = true; })
+          }
+        }.padding({ left: 16, right: 8 }).height(54).borderRadius(27)
+          .backgroundColor(this.agentBusy ? '#EE193044' : '#D92C2C2E').backdropBlur(24)
       }
     }.width('92%').constraintSize({ maxWidth: 560 }).position({ x: (this.areaWidth-Math.min(this.areaWidth*0.92,560))/2, y: this.agentVisible ? Math.max(20, this.areaHeight-480-this.safeBottom) : Math.max(20, this.areaHeight-130-this.safeBottom) })
   }
 
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
-      Web({ src: $rawfile('research.html'), controller: this.research.controller })
-        .javaScriptAccess(true).domStorageAccess(false).fileAccess(false)
-        .javaScriptProxy({ object: this.research.bridge, name: 'researchBridge', methodList: ['finish'], controller: this.research.controller })
-        .onPageEnd(() => { this.research.ready = true; })
-        .width(1).height(1).opacity(0).hitTestBehavior(HitTestMode.None)
       // The canvas fills the display; the page stays blank until resources are ready.
       if (this.privacyAgreed && this.opened) {
         Stack() { this.surface() }
           .width('100%').height('100%')
           .onAreaChange((oldArea: Area, area: Area) => this.canvasArea(area))
       }
+      Web({ src: $rawfile('research.html'), controller: this.research.controller })
+        .javaScriptAccess(true).domStorageAccess(false).fileAccess(false)
+        .javaScriptProxy({ object: this.research.bridge, name: 'researchBridge', methodList: ['finish', 'preview'], controller: this.research.controller })
+        .onPageEnd(() => { this.research.ready = true; })
+        .width(1).height(1).opacity(0).hitTestBehavior(HitTestMode.None)
       if (this.privacyAgreed && this.opened) { this.agentOverlay() }
       if (!this.privacyAgreed && this.privacyError.length > 0) {
         Column({ space: 20 }) {

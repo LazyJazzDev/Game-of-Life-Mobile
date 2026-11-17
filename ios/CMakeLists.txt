@@ -125,9 +125,9 @@ if(GOL_APP AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
   else()
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/AgentCredential.key" "")
   endif()
-  add_executable(${target} MACOSX_BUNDLE gol/GameOfLifeApp.swift games/GamesView.swift agent/LifeAgent.swift agent/AgentResearch.swift "${CMAKE_CURRENT_SOURCE_DIR}/../mobile/agent-research.js" "${CMAKE_CURRENT_SOURCE_DIR}/agent/hashlife" "${CMAKE_CURRENT_SOURCE_DIR}/agent/agent-tools.json"
+  add_executable(${target} MACOSX_BUNDLE gol/GameOfLifeApp.swift games/GamesView.swift agent/LifeAgent.swift agent/AgentResearch.swift "${CMAKE_CURRENT_SOURCE_DIR}/../mobile/agent-research.js" "${CMAKE_CURRENT_SOURCE_DIR}/../mobile/agent-preview.js" "${CMAKE_CURRENT_SOURCE_DIR}/agent/hashlife" "${CMAKE_CURRENT_SOURCE_DIR}/agent/agent-tools.json"
     demos/DemoBridge.mm demos/DemoBridge.h GameBridge.h RenderQueue.h "${bundle_resources}" "${CMAKE_CURRENT_SOURCE_DIR}/agent/knowledge-sources.json" "${CMAKE_CURRENT_BINARY_DIR}/AgentCredential.key" ${assets} ${strings})
-  set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../mobile/agent-research.js" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+  set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../mobile/agent-research.js" "${CMAKE_CURRENT_SOURCE_DIR}/../mobile/agent-preview.js" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
   set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/agent/hashlife" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
   set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/agent/agent-tools.json" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
   set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/agent/knowledge-sources.json" "${CMAKE_CURRENT_BINARY_DIR}/AgentCredential.key" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)

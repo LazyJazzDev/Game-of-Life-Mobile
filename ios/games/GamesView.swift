@@ -1061,8 +1061,20 @@ struct GamesView: View {
               HStack { Spacer(); Button { agentVisible=false } label: { Image(systemName:"chevron.down").padding(10).background(.ultraThinMaterial,in:Circle()) } }
               AgentPanel(agent:agent).frame(height:min(540,geometry.size.height*0.72))
             } else {
-              if agent.busy { Text(agent.progress).font(.footnote).padding(10).background(.ultraThinMaterial,in:Capsule()) }
-              AgentLauncher(title:agent.text("让 Agent 帮你探索…","Explore with Agent…")) { agentVisible=true }
+              HStack(spacing:8) {
+                if agent.busy { ProgressView().tint(Color(red:0.61,green:0.84,blue:1)) }
+                Button { agentVisible=true } label: {
+                  HStack {
+                    Text(agent.busy ? agent.progress : agent.outcome.isEmpty ? agent.text("让 Agent 帮你探索…","Explore with Agent…") : agent.outcome)
+                      .font(.subheadline).lineLimit(2)
+                    Spacer()
+                    if !agent.busy { Image(systemName:agent.outcome.isEmpty ? "sparkles" : "bubble.left.and.text.bubble.right") }
+                  }.contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                if agent.busy { Button(agent.text("停止","Stop")) { agent.cancel() }.buttonStyle(.bordered) }
+              }.padding(.horizontal,16).frame(minHeight:54)
+                .background(agent.busy ? Color(red:0.10,green:0.19,blue:0.27) : Color.black.opacity(0.7),in:Capsule())
+                .foregroundStyle(agent.busy ? Color(red:0.78,green:0.91,blue:1) : .white)
                 .frame(maxWidth:540).padding(.horizontal,24)
             }
           }.padding(.bottom,agentVisible ? 8 : 76).padding(.horizontal,agentVisible ? 8 : 0)
@@ -1076,6 +1088,7 @@ struct GamesView: View {
           }
         #endif
       }
+      .onChange(of:agent.busy) { _,busy in if busy { agentVisible=false } }
       .onChange(of:phase) { _,value in if value != .active { agent.cancel() } }
       .alert(
         "Game error", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })

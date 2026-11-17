@@ -9,6 +9,8 @@ export interface ResearchResult { ok: boolean; value?: ResearchValue; output?: s
 // The Web component exposes only result delivery, never native files or credentials.
 export class ResearchBridge {
   receive: (id: number, value: string) => void = () => {};
+  visual: (id: number, value: string) => void = () => {};
+  preview(id: number, value: string): void { this.visual(id, value); }
   finish(id: number, value: string): void { this.receive(id, value); }
 }
 export class AgentResearch {
@@ -16,12 +18,14 @@ export class AgentResearch {
   bridge: ResearchBridge = new ResearchBridge();
   ready: boolean = false;
   engine: string = '';
+  visualChanged: (value: string) => void = () => {};
   private documents: Record<string, string> = {};
   private sources: Record<string, string> = {};
   private sequence: number = 0;
   private pending?: (value: string) => void;
   private request?: http.HttpRequest;
   constructor() {
+    this.bridge.visual = (id: number, value: string) => { if (id === this.sequence) this.visualChanged(value); };
     this.bridge.receive = (id: number, value: string) => {
       if (id === this.sequence) { const done = this.pending; this.pending = undefined; done?.(value); }
     };
@@ -31,8 +35,15 @@ export class AgentResearch {
     this.request?.destroy(); this.request = undefined;
     const done = this.pending; this.pending = undefined;
     done?.('{"ok":false,"error":"cancelled"}');
-    // Reload destroys the document and its workers, including an infinite script.
-    if (this.ready) { this.ready = false; this.controller.refresh(); }
+    // Terminate workers (including infinite scripts) without blanking the fading preview.
+    this.hide();
+    if (this.ready) this.controller.runJavaScript('window.cancelResearchRuns?.();').catch(() => {
+      this.ready = false; this.controller.refresh();
+    });
+  }
+  hide(): void {
+    this.sequence++;
+    if (this.ready) this.controller.runJavaScript('window.cancelResearchRuns?.();').catch(() => {});
   }
   content(id: string): string | undefined { return this.documents[id]; }
   read(id: string, offset: number, length: number): string {

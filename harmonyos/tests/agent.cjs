@@ -45,6 +45,7 @@ function reply(message, finish = 'stop') {
   requests=[]; let round=0;
   respond=async()=> ++round===1 ? reply({content:'',reasoning_content:'internal test reasoning',tool_calls:[{id:'a',function:{name:'canvas_state',arguments:'{}'}}]},'tool_calls') : reply({content:'已暂停。'});
   await a.send('inspect');assert.equal(called,1);assert.equal(a.lines.at(-1).text,'已暂停。');assert.ok(sawLive);
+  const finishedProgress=a.progress;a.cancel();assert.equal(a.progress,finishedProgress,'backgrounding an idle agent must preserve completion feedback');
   assert.equal(requests[1].messages.at(-1).tool_call_id,'a');assert.equal(requests[1].messages.at(-2).reasoning_content,'internal test reasoning');
   assert.ok(!JSON.stringify(a.lines).includes('internal test reasoning'));assert.ok(!JSON.stringify(requests).includes('local-test-key'));
   round=0;requests=[];

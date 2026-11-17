@@ -52,11 +52,12 @@ export class LifeAgent {
   zh: boolean = true;
   text(zh: string, en: string): string { return this.zh ? zh : en; }
   cancel(): void {
+    const wasBusy = this.busy;
     this.epoch++; this.endStream?.(); this.endStream = undefined; this.cancelResearch();
     clearInterval(this.ticker); this.liveResponse = '';
     this.request?.destroy(); this.request = undefined;
     this.busy = false; this.history = [];
-    this.progress = this.text('已停止', 'Stopped'); this.changed();
+    if (wasBusy) this.progress = this.text('已停止', 'Stopped'); this.changed();
   }
   private toolProgress(name: string, args: AgentArgs): string {
     if (name === 'research_fetch') return this.text('正在读取公开资料…', 'Reading public sources…');

@@ -10,6 +10,7 @@ for name in ('agent-tools.json', 'knowledge-sources.json'):
     shutil.copy2(root / 'ios/agent' / name, out / name)
 shutil.copytree(root / 'ios/agent/hashlife', out / 'hashlife', dirs_exist_ok=True)
 shutil.copy2(root / 'mobile/agent-research.js', out / 'agent-research.js')
+shutil.copy2(root / 'mobile/agent-preview.js', out / 'agent-preview.js')
 source = (root / 'ios/agent/LifeAgent.swift').read_text()
 prompt = re.search(r'history=\[\["role":"system","content":(".*?")\]\]', source).group(1)
 (out / 'agent-system.txt').write_text(json.loads(prompt))
@@ -19,10 +20,9 @@ if not key.is_file():
 shutil.copy2(key, out / 'AgentCredential.key')
 (out / 'research.html').write_text('''<!doctype html><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net; worker-src blob:; connect-src https://cdn.jsdelivr.net">
-<script>''' + (out / 'agent-research.js').read_text() + '''
-
+<script>''' + (out / 'agent-preview.js').read_text() + '\n' + (out / 'agent-research.js').read_text() + '''
 window.startResearch = function(id, code, documents, engine, language) {
-  runResearch(code, documents, engine, language).then(value => {
+  runResearch(code, documents, engine, language, frame => researchBridge.preview(id, JSON.stringify(frame))).then(value => {
     let text;
     try { text = JSON.stringify(value, (k,v) => { if(typeof v === 'number' && !Number.isFinite(v)) throw Error('nonfinite'); return v; }); }
     catch(e) { text = JSON.stringify({ok:false,error:'invalid_script_result'}); }

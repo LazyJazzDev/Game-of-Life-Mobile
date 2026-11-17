@@ -15,7 +15,7 @@ inline std::string Execute(life_demo::GameOfLife &game,
                            TemplateStore *templates = nullptr,
                            bool allow_preset_guides = true) {
   rapidjson::Document d;
-  if (input.size() > 2 * 1024 * 1024)
+  if (input.size() > 20 * 1024 * 1024)
     return R"({"ok":false,"error":"request_too_large"})";
   d.Parse(input.c_str());
   if (d.HasParseError() || !d.IsObject() || !d.HasMember("action") || !d["action"].IsString())
@@ -27,6 +27,30 @@ inline std::string Execute(life_demo::GameOfLife &game,
     return std::isfinite(v);
   };
   std::string action = d["action"].GetString();
+  // Presentation-only commands are issued by the app, never advertised as model tools.
+  if (action == "preview_end") {
+    game.EndAgentPreview();
+    return R"({"ok":true})";
+  }
+  if (action == "preview" || action == "preview_template") {
+    Template p;
+    const bool loaded =
+        action == "preview"
+            ? d.HasMember("rle") && d["rle"].IsString() && DecodeRLE(d["rle"].GetString(), p)
+            : templates && d.HasMember("name") && d["name"].IsString() && templates->Load(d["name"].GetString(), p);
+    if (!loaded)
+      return R"({"ok":false,"error":"invalid_preview"})";
+    std::vector<glm::ivec2> cells;
+    cells.reserve(p.cells.size());
+    for (auto cell : p.cells)
+      cells.push_back({cell.first, cell.second});
+    return game.AgentPreview(cells, p.width, p.height) ? R"({"ok":true})"
+                                                       : R"({"ok":false,"error":"preview_unavailable"})";
+  }
+  if (input.size() > 2 * 1024 * 1024)
+    return R"({"ok":false,"error":"request_too_large"})";
+  if ((action.rfind("template_", 0) != 0 && action != "view_stop") || action == "template_place")
+    game.EndAgentPreview();
   if (action == "metacell_guide")
     return allow_preset_guides ? kMetacellGuide : R"({"ok":false,"error":"unsupported_action"})";
   if (action.rfind("template_", 0) == 0) {
@@ -81,6 +105,7 @@ inline std::string Execute(life_demo::GameOfLife &game,
           cells.push_back({x + c.first, y + c.second});
         if (!game.AgentStamp({{x, y, p.width, p.height}}, cells, mode))
           return R"({"ok":false,"error":"canvas_busy_or_nonempty_or_invalid_mode","applied":false})";
+        game.AgentFit(x, y, p.width, p.height);
       } else if (action != "template_info")
         return error();
     }
@@ -116,6 +141,14 @@ inline std::string Execute(life_demo::GameOfLife &game,
       cells.push_back({c[0].GetInt(), c[1].GetInt(), c[2].GetInt()});
     }
     ok = valid && game.AgentEdit(cells);
+    if (ok && !cells.empty()) {
+      glm::ivec2 lo{cells.front()}, hi{lo};
+      for (auto c : cells) {
+        lo = glm::min(lo, glm::ivec2{c});
+        hi = glm::max(hi, glm::ivec2{c});
+      }
+      game.AgentFit(lo.x, lo.y, hi.x - lo.x + 1, hi.y - lo.y + 1);
+    }
   } else if (action == "summary" || action == "fit") {
     if (d.HasMember("x") && d["x"].IsInt() && d.HasMember("y") && d["y"].IsInt() && d.HasMember("width") &&
         d["width"].IsInt() && d.HasMember("height") && d["height"].IsInt()) {
@@ -126,6 +159,7 @@ inline std::string Execute(life_demo::GameOfLife &game,
         ok = game.AgentRegionSummary(d["x"].GetInt(), d["y"].GetInt(), d["width"].GetInt(), d["height"].GetInt(),
                                      population, hash);
       if (ok && action == "summary") {
+        game.AgentFit(d["x"].GetInt(), d["y"].GetInt(), d["width"].GetInt(), d["height"].GetInt());
         w.Key("population");
         w.Uint64(population);
         w.Key("hash");
@@ -140,6 +174,7 @@ inline std::string Execute(life_demo::GameOfLife &game,
       std::vector<glm::ivec2> cells;
       ok = game.AgentRead(int(x), int(y), int(width), int(height), cells);
       if (ok) {
+        game.AgentFit(int(x), int(y), int(width), int(height));
         w.Key("alive");
         w.StartArray();
         for (auto c : cells) {

@@ -2,10 +2,43 @@ import Foundation
 import WebKit
 
 // General research workspace: no patterns, domain recipes, filesystem or credentials.
-@MainActor final class AgentResearch: NSObject, WKNavigationDelegate {
+@MainActor final class AgentResearch: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
   private var documents: [String:String] = [:]
   private var sources: [String:String] = [:]
-  private var web: WKWebView?
+  let web: WKWebView
+  var visualChanged: ([String:Any]) -> Void = { _ in }
+  private var setup: Task<Void, Error>?
+  private var visualGeneration = 0
+
+  override init() {
+    let configuration=WKWebViewConfiguration();configuration.websiteDataStore = .nonPersistent()
+    web=WKWebView(frame:.zero,configuration:configuration)
+    super.init()
+    web.navigationDelegate=self;web.isOpaque=false;web.backgroundColor = .clear
+    web.scrollView.isScrollEnabled=false
+    web.configuration.userContentController.add(self,name:"preview")
+  }
+  func userContentController(_ userContentController:WKUserContentController,didReceive message:WKScriptMessage) {
+    if message.name == "preview", let body=message.body as? [String:Any], body["token"] as? Int == visualGeneration,
+      let frame=body["frame"] as? [String:Any] { visualChanged(frame) }
+  }
+  func prepare() async throws {
+    if let setup { try await setup.value;return }
+    let task=Task { @MainActor in
+      try await withCheckedThrowingContinuation { (continuation:CheckedContinuation<Void,Error>) in
+        ready=continuation
+        web.loadHTMLString("<html><head><meta name='viewport' content='width=device-width,initial-scale=1'><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net; worker-src blob:; connect-src https://cdn.jsdelivr.net\"></head><body></body></html>",baseURL:nil)
+      }
+      let visual=try String(contentsOf:Bundle.main.bundleURL.appendingPathComponent("agent-preview.js"),encoding:.utf8)
+      _ = try await web.evaluateJavaScript(visual)
+    }
+    setup=task
+    try await task.value
+  }
+  func hide() {
+    visualGeneration += 1
+    web.evaluateJavaScript("window.cancelResearchRuns?.();",completionHandler:nil)
+  }
   private var ready: CheckedContinuation<Void, Error>?
 
   func fetch(_ text: String) async throws -> [String:Any] {
@@ -53,20 +86,14 @@ import WebKit
   }
 
   func script(_ code:String, language:String = "javascript") async throws -> [String:Any] {
-    if web == nil {
-      let configuration=WKWebViewConfiguration(); configuration.websiteDataStore = .nonPersistent()
-      let view=WKWebView(frame:.zero,configuration:configuration); view.navigationDelegate=self; web=view
-      try await withCheckedThrowingContinuation { (continuation:CheckedContinuation<Void,Error>) in
-        ready=continuation
-        view.loadHTMLString("<html><head><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net; worker-src blob:; connect-src https://cdn.jsdelivr.net\"></head><body></body></html>",baseURL:nil)
-      }
-    }
-    guard let web else { throw AgentFailure.invalidResponse }
+    let token=visualGeneration
+    try await prepare();try Task.checkCancellation()
+    guard token==visualGeneration else { throw CancellationError() }
     // A disposable worker supplies a hard execution deadline without blocking UI.
     let base=Bundle.main.bundleURL.appendingPathComponent("hashlife")
     let engine=try String(contentsOf:base.appendingPathComponent("life.js"),encoding:.utf8)+"\n"+String(contentsOf:base.appendingPathComponent("adapter.js"),encoding:.utf8)
-    let body=try String(contentsOf:Bundle.main.bundleURL.appendingPathComponent("agent-research.js"),encoding:.utf8)+"\nreturn await runResearch(code, documents, engine, language);"
-    let result=try await web.callAsyncJavaScript(body,arguments:["code":code,"documents":documents,"engine":engine,"language":language],in:nil,contentWorld:.page)
+    let body=try String(contentsOf:Bundle.main.bundleURL.appendingPathComponent("agent-research.js"),encoding:.utf8)+"\nreturn await runResearch(code, documents, engine, language, frame=>window.webkit.messageHandlers.preview.postMessage({token,frame}));"
+    let result=try await web.callAsyncJavaScript(body,arguments:["code":code,"documents":documents,"engine":engine,"language":language,"token":token],in:nil,contentWorld:.page)
     guard let object=result as? [String:Any] else { throw AgentFailure.invalidResponse }
     guard JSONSerialization.isValidJSONObject(object) else {
       return ["ok":false,"error":"invalid_script_result","detail":"Return a JSON-compatible object with finite numbers; NaN, Infinity, functions and cyclic objects are not supported."]

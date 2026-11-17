@@ -1,7 +1,18 @@
+globalThis.agentResearchRuns ??= new Set();
+globalThis.cancelResearchRuns = () => { for(const cancel of [...globalThis.agentResearchRuns]) cancel(); };
 // Shared disposable research worker. No patterns, credentials or construction recipes.
-async function runResearch(code, documents, engine, language) {
+async function runResearch(code, documents, engine, language, onPreview) {
 return await new Promise((resolve,reject)=>{
-  const source = engine + `\nconst originalFetch=self.fetch, originalImport=self.importScripts; self.fetch=undefined; self.XMLHttpRequest=undefined; self.WebSocket=undefined; self.importScripts=undefined;
+  const visual = typeof agentPreviewFrame === 'function' && onPreview ? agentPreviewFrame.toString() : '';
+  const source = engine + '\n' + visual + `\nconst originalFetch=self.fetch, originalImport=self.importScripts; self.fetch=undefined; self.XMLHttpRequest=undefined; self.WebSocket=undefined; self.importScripts=undefined;
+  let previewAt=0;
+  if(typeof agentPreviewFrame==='function') {
+    const encode=life.encodeRLE.bind(life);
+    const emit=(cells,generation,phase)=>{const now=Date.now();if(phase!=='result'&&now-previewAt<180)return;previewAt=now;
+      const frame=agentPreviewFrame(cells,generation,phase,encode);if(frame)self.postMessage({preview:frame});};
+    life.preview=emit;
+    for(const name of ['parseRLE','encodeRLE']) {const original=life[name];life[name]=function(value){const result=original.call(life,value);emit(name==='parseRLE'?result:value,0,'structure');return result;};}
+  }
   const emitLog=text=>self.postMessage({log:String(text)});
   console.log=(...parts)=>emitLog(parts.map(String).join(' '));
   self.onmessage=async e=>{try {
@@ -39,11 +50,14 @@ return await new Promise((resolve,reject)=>{
   } catch(err){self.postMessage({ok:false,error:String(err),stack:err.stack});}}`;
   const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
   const worker=new Worker(url);
-  const stop=()=>{worker.terminate();URL.revokeObjectURL(url);};
+  const stop=()=>{worker.terminate();URL.revokeObjectURL(url);globalThis.agentResearchRuns.delete(cancel);};
   let output='';
   const finish=value=>{clearTimeout(timer);stop();resolve({...value,output});};
+  const cancel=()=>finish({ok:false,error:'cancelled'});
+  globalThis.agentResearchRuns.add(cancel);
   const timer=setTimeout(()=>finish({ok:false,error:'execution_timeout'}),60000);
   worker.onmessage=e=>{
+    if(e.data.preview){try{onPreview?.(e.data.preview);}catch(_){}return;}
     if(typeof e.data.log==='string'){output=(output+e.data.log+String.fromCharCode(10)).slice(-16000);return;}
     finish(e.data);
   };
