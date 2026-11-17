@@ -69,6 +69,7 @@ function patternCells(pattern: BuiltinPattern): string {
   return `!Name: ${pattern.name}\n!Life Lexicon (Stephen A. Silver et al.), adapted under CC BY-SA 3.0: https://creativecommons.org/licenses/by-sa/3.0/\n${lines.join('\n')}\n`;
 }
 interface NativeCommand {
+  payload?: string;
   type: string; value?: number | boolean; axis?: number; path?: string; angle?: number; kind?: number;
   x?: number; y?: number; right?: number; request?: number;
 }
@@ -343,6 +344,14 @@ struct Index {
           this.captureWaiting = true;
           this.fileBusy = true;
           this.send({ type: 'requestFile', value: 1 });
+        } else {
+          // Explicit capture zoom can inspect the restored canvas without
+          // importing a pattern or changing any cells.
+          const zoom = Number(AppStorage.get<string>('captureZoom') ?? '1');
+          if (Number.isFinite(zoom) && zoom > 0 && zoom !== 1) {
+            const view: AgentArgs = { action: 'view', value: Math.max(64 / 16384, Math.min(12, zoom)), x: 0, y: 0 };
+            this.send({ type: 'agent', request: ++this.agentSequence, payload: JSON.stringify(view) });
+          }
         }
       }
       if (this.captureWaiting && value.fileRequest === 1) {
@@ -542,14 +551,16 @@ struct Index {
       const name = requestedName === 'pi-orbital' ? 'pi orbital' :
         requestedName === 'koks-galaxy' ? "Kok's galaxy" : requestedName;
       const pattern = this.loadBuiltins().find((item: BuiltinPattern) => item.name === name);
-      if (!pattern) throw new FileOperationError('invalid_pattern_file');
+      const contrastSingle = this.context().applicationInfo.debug && requestedName === 'contrast-single';
+      if (!pattern && !contrastSingle) throw new FileOperationError('invalid_pattern_file');
       const path = `${this.context().cacheDir}/Capture.cells`;
       const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
-      try { fs.writeSync(file.fd, patternCells(pattern)); } finally { fs.closeSync(file); }
+      try { fs.writeSync(file.fd, contrastSingle ? '!Single-cell contrast test\nO\n' : patternCells(pattern!)); } finally { fs.closeSync(file); }
       await this.completeFile(path);
       const zoom = Number(AppStorage.get<string>('captureZoom') ?? '1');
       if (Number.isFinite(zoom) && zoom > 0) {
-        this.send({ type: 'input', kind: 6, x: 0.5, y: 0.5, value: Math.min(10, zoom) });
+        const view: AgentArgs = { action: 'view', value: Math.max(64 / 16384, Math.min(12, zoom)), x: 0, y: 0 };
+        this.send({ type: 'agent', request: ++this.agentSequence, payload: JSON.stringify(view) });
       }
       const panel = AppStorage.get<string>('capturePanel') ?? '';
       if (panel === 'library' || panel === 'save') {

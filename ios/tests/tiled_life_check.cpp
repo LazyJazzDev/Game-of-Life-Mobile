@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -30,6 +32,43 @@ std::vector<uint8_t> Reference(const std::vector<uint8_t> &cells, uint32_t side,
     }
   }
   return result;
+}
+
+// Independent population pyramid and pixel-center sampling oracle.
+float ReferencePeak(const std::vector<uint8_t> &cells, glm::vec2 origin, float pitch, glm::uvec4 rect) {
+  std::vector<std::vector<float>> levels(10);
+  levels[0].assign(cells.begin(), cells.end());
+  for (int l = 1; l <= 9; ++l) {
+    int side = 512 >> l;
+    levels[l].resize(side * side);
+    for (int y = 0; y < side; ++y)
+      for (int x = 0; x < side; ++x)
+        for (int dy = 0; dy < 2; ++dy)
+          for (int dx = 0; dx < 2; ++dx)
+            levels[l][y * side + x] += levels[l - 1][(2 * y + dy) * (side * 2) + 2 * x + dx] * 0.25f;
+  }
+  auto sample = [&](int l, glm::vec2 grid) {
+    auto p = grid / float(1 << l) - 0.5f;
+    auto base = glm::ivec2(glm::floor(p));
+    auto f = glm::fract(p);
+    int side = 512 >> l;
+    float value = 0;
+    for (int y = 0; y < 2; ++y)
+      for (int x = 0; x < 2; ++x)
+        value += levels[l][std::clamp(base.y + y, 0, side - 1) * side + std::clamp(base.x + x, 0, side - 1)] *
+                 (x ? f.x : 1 - f.x) * (y ? f.y : 1 - f.y);
+    return value;
+  };
+  float lod = std::clamp(std::log2(1 / pitch), 0.0f, 9.0f), peak = 0;
+  int l = int(lod);
+  for (uint32_t y = rect.y; y < rect.y + rect.w; ++y)
+    for (uint32_t x = rect.x; x < rect.x + rect.z; ++x) {
+      auto grid = (glm::vec2(x + 0.5f, y + 0.5f) - origin) / pitch;
+      if (grid.x < 0 || grid.y < 0 || grid.x >= 512 || grid.y >= 512)
+        continue;
+      peak = std::max(peak, sample(l, grid) * (1 - (lod - l)) + sample(std::min(l + 1, 9), grid) * (lod - l));
+    }
+  return peak;
 }
 
 // Compare every mip texel against exact CPU population counts, including
@@ -198,6 +237,43 @@ int main(int argc, char **argv) {
     ObjPtr<ISubmissionToken> submitted = upload->Submit();
     return submitted && submitted->WaitHost();
   };
+  // Normalize the actual filtered pixel peak, including fractional pan and LOD.
+  auto verify_view = [&](glm::vec2 origin, float pitch, glm::uvec4 rect) {
+    ObjPtr<ICommandContext> context = queue->CreateCommandContext();
+    if (!simulation.UpdateViewContrast(context.Get(), origin, pitch, rect))
+      return false;
+    ObjPtr<IDownloadToken> read = context->CmdDownloadBuffer(simulation.Mipmaps(), simulation.ViewPeakByteOffset(), 4);
+    ObjPtr<ISubmissionToken> done = context->Submit();
+    float peak = -1;
+    if (!read || !done || !done->WaitHost() || !read->CopyTo(&peak, 4))
+      return false;
+    float expected = ReferencePeak(cpu, origin, pitch, rect);
+    if (std::abs(peak - expected) > std::max(1e-9f, expected * 2e-4f)) {
+      std::cerr << "View peak " << peak << " expected " << expected << "\n";
+      return false;
+    }
+    return true;
+  };
+  cpu.assign(512 * 512, 0);
+  for (int scene = 0; scene < 4; ++scene) {
+    if (scene == 1)
+      cpu[255 * 512 + 253] = 1;
+    if (scene == 2)
+      for (int y = 60; y < 92; ++y)
+        for (int x = 70; x < 102; ++x)
+          cpu[y * 512 + x] = 1;
+    if (scene == 3)
+      cpu.assign(512 * 512, 0);
+    if (!submit_upload())
+      return 36;
+    for (float pitch : {0.007f, 0.07f, 0.11f, 0.5f, 1.0f, 2.0f}) {
+      if (!verify_view({0.17f, 0.31f}, pitch, {0, 0, 64, 64}) ||
+          !verify_view({-18.43f, -16.27f}, pitch, {0, 0, 64, 64}) ||
+          !verify_view({-18.43f, -16.27f}, pitch, {0, 0, 64, 64}))
+        return 37;
+    }
+  }
+  std::cout << "PASS filtered viewport peak: empty, single cell, mixed densities, clear, pan/zoom/cache\n";
   for (auto &cell : cpu)
     cell = random() & 1;
   if (!submit_upload() || !verify_steps(2, true))
