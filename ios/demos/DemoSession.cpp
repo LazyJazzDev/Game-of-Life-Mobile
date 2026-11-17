@@ -9,6 +9,7 @@ DemoSession::DemoSession(const std::filesystem::path &resources, bool prepare, B
   // A prepare build compiles Slang and writes the cache; apps only read it.
   ConfigureShaderCache({resources / "shaders", !prepare, backend == BACKEND_API_METAL});
   game_ = std::make_unique<DesktopGameSession>(backend);
+  game_->SetAgentBuiltinDirectory(resources.parent_path() / "AgentTemplates");
 }
 
 DemoSession::~DemoSession() {

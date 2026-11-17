@@ -230,6 +230,7 @@ void Host::Execute(const std::string &json) {
     // The app only reads the SPIR-V prepared offline (prepare_resources.py).
     grassland::rhi::ConfigureShaderCache({resources_ / "shaders", true, false});
     game_ = std::make_unique<DesktopGameSession>(grassland::rhi::BACKEND_API_VULKAN);
+    game_->SetAgentBuiltinDirectory(resources_ / "AgentTemplates");
     game_->EnableNativeSizeControls();
     transient_session_ = Boolean(c, "value");
     if (!transient_session_) {

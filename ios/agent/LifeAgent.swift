@@ -90,7 +90,7 @@ struct AgentMessage: Identifiable {
 
   private func run(_ input: String) async throws {
     if history.isEmpty {
-      history=[["role":"system","content":"You are the Life Agent inside Conway's Game of Life (B3/S23). Help design and test structures using tools. Reply in the user's language. Do not claim actions without successful tool results. Use catalog patterns rather than inventing known layouts. Coordinates: center origin, x right, y down. Read before editing; never reset or randomize unless requested. Destructive actions require user confirmation. Preserve unrelated cells. One tool at a time. Step tests are finite observations, not proofs. The app has 16384x16384 cells; large metacells may not fit. Web links are references only. Keep replies concise. Stop after confirmation is requested and wait for the user."]]
+      history=[["role":"system","content":"You are the Life Agent inside Conway's Game of Life (B3/S23). Help design and test structures using tools. Reply in the user's language. Do not claim actions without successful tool results. Use catalog patterns rather than inventing known layouts. For repeated or large structures, save RLE templates, compose named templates with repetition, and place the whole compound once. Template anchors are TOP-LEFT; pattern_place is CENTER. Inspect canvas_summary before writing and compare its population/hash with template_info after placement. Use canvas_fit to show a complete region; never guess a zoom. Enlarged drawings are not functioning metacells. Coordinates: center origin, x right, y down. Read before editing; never reset or randomize unless requested. Destructive actions require user confirmation. Preserve unrelated cells. One tool at a time. Step tests are finite observations, not proofs. The app has 16384x16384 cells; large metacells may not fit. Web links are references only. Keep replies concise. Stop after confirmation is requested and wait for the user."]]
     }
     history.append(["role":"user","content":input])
     let url=Bundle.main.url(forResource:"agent-tools",withExtension:"json")!
@@ -131,7 +131,11 @@ struct AgentMessage: Identifiable {
   private func toolLabel(_ name:String)->String {
     switch name {
     case "pattern_search":return text("正在查找已知结构…", "Finding known patterns…")
-    case "pattern_place","canvas_edit":return text("正在绘制细胞结构…", "Editing cells…")
+    case "template_save","template_compose":return text("正在保存和组合图样模板…", "Saving and composing templates…")
+    case "template_list","template_info":return text("正在查看图样模板…", "Inspecting templates…")
+    case "canvas_summary":return text("正在核验画布结构…", "Verifying canvas structure…")
+    case "canvas_fit":return text("正在适配结构视野…", "Fitting the structure…")
+    case "template_place","pattern_place","canvas_edit":return text("正在绘制细胞结构…", "Editing cells…")
     case "canvas_read","canvas_state":return text("正在读取画布…", "Reading canvas…")
     case "canvas_control":return text("正在执行画布操作…", "Applying canvas operation…")
     default:return text("正在查询研究资料…", "Looking up research sources…")
@@ -221,6 +225,9 @@ struct AgentMessage: Identifiable {
     case "canvas_control":break
     case "canvas_read":payload["action"]="read"
     case "canvas_edit":payload["action"]="edit"
+    case "canvas_summary":payload["action"]="summary"
+    case "canvas_fit":payload["action"]="fit"
+    case "metacell_guide","template_save","template_list","template_info","template_compose","template_place":payload["action"]=name
     default:throw AgentFailure.invalidResponse
     }
     return try await native(payload)

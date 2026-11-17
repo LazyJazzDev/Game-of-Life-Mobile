@@ -1,4 +1,5 @@
 #pragma once
+#include "../../../mobile/AgentTemplates.h"
 #include "demo/gol/application/hosted_window.h"
 #include "grassland/rhi/rhi.h"
 
@@ -12,6 +13,11 @@ class DesktopGameSession {
   explicit DesktopGameSession(grassland::rhi::BackendAPI backend = grassland::rhi::BACKEND_API_DEFAULT);
   ~DesktopGameSession();
   std::string AgentCommand(const std::string &json);
+
+  void SetAgentBuiltinDirectory(const std::filesystem::path &path) {
+    agent_templates_.SetBuiltinDirectory(path);
+  }
+
   void Render();
   bool WaitGPU();
   grassland::rhi::IQueue *Queue() const;
@@ -39,5 +45,6 @@ class DesktopGameSession {
   std::string CompleteFile(const std::string &path);
 
  private:
+  mobile_agent::TemplateStore agent_templates_;
   std::unique_ptr<life_demo::GameOfLife> life_;
 };

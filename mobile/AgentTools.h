@@ -5,14 +5,17 @@
 
 #include <cmath>
 
+#include "AgentTemplates.h"
+#include "MetacellGuide.h"
 #include "demo/gol/game_of_life_gui.h"
 
 namespace mobile_agent {
-inline std::string Execute(life_demo::GameOfLife &game, const std::string &input) {
+inline std::string Execute(life_demo::GameOfLife &game, const std::string &input, TemplateStore *templates = nullptr) {
   rapidjson::Document d;
+  if (input.size() > 2 * 1024 * 1024)
+    return R"({"ok":false,"error":"request_too_large"})";
   d.Parse(input.c_str());
-  if (input.size() > 256 * 1024 || d.HasParseError() || !d.IsObject() || !d.HasMember("action") ||
-      !d["action"].IsString())
+  if (d.HasParseError() || !d.IsObject() || !d.HasMember("action") || !d["action"].IsString())
     return R"({"ok":false,"error":"invalid_arguments"})";
   auto number = [&](const char *key, double &v) {
     if (!d.HasMember(key) || !d[key].IsNumber())
@@ -21,6 +24,65 @@ inline std::string Execute(life_demo::GameOfLife &game, const std::string &input
     return std::isfinite(v);
   };
   std::string action = d["action"].GetString();
+  if (action == "metacell_guide")
+    return kMetacellGuide;
+  if (action.rfind("template_", 0) == 0) {
+    if (!templates)
+      return R"({"ok":false,"error":"template_store_unavailable"})";
+    auto error = [] { return std::string(R"({"ok":false,"error":"invalid_template_or_limits_or_existing_name"})"); };
+    if (action == "template_list") {
+      std::string out = "{\"ok\":true,\"templates\":[";
+      bool first = true;
+      for (const auto &name : templates->List()) {
+        Template p;
+        if (!templates->Load(name, p))
+          continue;
+        if (!first)
+          out += ",";
+        first = false;
+        out += TemplateSummary(name, p);
+      }
+      return out + "]}";
+    }
+    if (!d.HasMember("name") || !d["name"].IsString() || !TemplateName(d["name"].GetString()))
+      return error();
+    const std::string name = d["name"].GetString();
+    Template p;
+    if (action == "template_save") {
+      if (!d.HasMember("rle") || !d["rle"].IsString() || !DecodeRLE(d["rle"].GetString(), p) ||
+          !templates->Save(name, p))
+        return error();
+    } else if (action == "template_compose") {
+      if (!d.HasMember("width") || !d["width"].IsInt() || !d.HasMember("height") || !d["height"].IsInt() ||
+          !d.HasMember("parts") || !templates->Compose(d["parts"], d["width"].GetInt(), d["height"].GetInt(), p) ||
+          !templates->Save(name, p))
+        return error();
+    } else {
+      if (!templates->Load(name, p))
+        return error();
+      if (action == "template_place") {
+        if (!d.HasMember("x") || !d["x"].IsInt() || !d.HasMember("y") || !d["y"].IsInt())
+          return error();
+        int x = d["x"].GetInt(), y = d["y"].GetInt();
+        if (x < -8192 || y < -8192 || x > 8192 - p.width || y > 8192 - p.height)
+          return error();
+        std::string mode = "empty_only";
+        if (d.HasMember("mode")) {
+          if (!d["mode"].IsString())
+            return error();
+          mode = d["mode"].GetString();
+        }
+        std::vector<glm::ivec2> cells;
+        cells.reserve(p.cells.size());
+        for (auto c : p.cells)
+          cells.push_back({x + c.first, y + c.second});
+        if (!game.AgentStamp({{x, y, p.width, p.height}}, cells, mode))
+          return R"({"ok":false,"error":"canvas_busy_or_nonempty_or_invalid_mode","applied":false})";
+      } else if (action != "template_info")
+        return error();
+    }
+    return TemplateSummary(name, p);
+  }
   rapidjson::StringBuffer buffer;
   rapidjson::Writer<rapidjson::StringBuffer> w(buffer);
   w.StartObject();
@@ -51,6 +113,22 @@ inline std::string Execute(life_demo::GameOfLife &game, const std::string &input
       cells.push_back({c[0].GetInt(), c[1].GetInt(), c[2].GetInt()});
     }
     ok = valid && game.AgentEdit(cells);
+  } else if (action == "summary" || action == "fit") {
+    if (d.HasMember("x") && d["x"].IsInt() && d.HasMember("y") && d["y"].IsInt() && d.HasMember("width") &&
+        d["width"].IsInt() && d.HasMember("height") && d["height"].IsInt()) {
+      uint64_t population = 0, hash = 0;
+      if (action == "fit")
+        ok = game.AgentFit(d["x"].GetInt(), d["y"].GetInt(), d["width"].GetInt(), d["height"].GetInt());
+      else
+        ok = game.AgentRegionSummary(d["x"].GetInt(), d["y"].GetInt(), d["width"].GetInt(), d["height"].GetInt(),
+                                     population, hash);
+      if (ok && action == "summary") {
+        w.Key("population");
+        w.Uint64(population);
+        w.Key("hash");
+        w.String(std::to_string(hash).c_str());
+      }
+    }
   } else if (action == "read") {
     double x, y, width, height;
     if (number("x", x) && number("y", y) && number("width", width) && number("height", height) && x == std::floor(x) &&

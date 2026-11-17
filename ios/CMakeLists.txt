@@ -86,6 +86,8 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
   add_executable(gol_tiled_storage_check tests/tiled_storage_check.cpp)
   target_link_libraries(gol_tiled_storage_check PRIVATE gol_ui)
   target_include_directories(gol_tiled_storage_check PRIVATE "${ROOT}/demo/gol")
+  add_executable(gol_agent_templates_check tests/agent_templates_check.cpp)
+  target_link_libraries(gol_agent_templates_check PRIVATE gol_host)
   add_executable(gol_agent_check tests/agent_check.cpp)
   target_link_libraries(gol_agent_check PRIVATE gol_host)
   add_executable(gol_games_check tests/games_check.cpp)
@@ -117,8 +119,9 @@ if(GOL_APP AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${target}-bundle")
   file(CREATE_LINK "${GAME_OF_LIFE_RESOURCES}" "${bundle_resources}" SYMBOLIC)
   add_executable(${target} MACOSX_BUNDLE gol/GameOfLifeApp.swift games/GamesView.swift agent/LifeAgent.swift "${CMAKE_CURRENT_SOURCE_DIR}/../mobile/agent-tools.json"
-    demos/DemoBridge.mm demos/DemoBridge.h GameBridge.h RenderQueue.h "${bundle_resources}" ${assets} ${strings})
+    demos/DemoBridge.mm demos/DemoBridge.h GameBridge.h RenderQueue.h "${bundle_resources}" "${CMAKE_CURRENT_SOURCE_DIR}/../mobile/AgentTemplates" ${assets} ${strings})
   set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../mobile/agent-tools.json" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+  set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../mobile/AgentTemplates" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
   set_source_files_properties("${bundle_resources}" ${assets} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
   # An Icon Composer icon: layered Liquid Glass on iOS 26, flat renderings before.
   set_source_files_properties(${assets} PROPERTIES XCODE_EXPLICIT_FILE_TYPE folder.iconcomposer.icon)
@@ -129,8 +132,15 @@ if(GOL_APP AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
   endforeach()
   # Folder resources otherwise copy only at configure time; shader preparation can
   # add nested cache files without changing the folder timestamp seen by Ninja.
+  set(bundle_copy_dependency)
+  if(CMAKE_GENERATOR STREQUAL "Ninja")
+    # Serialize with CMake's initial folder copy; both otherwise write the same
+    # directory concurrently after reconfiguration.
+    set(bundle_copy_dependency "${CMAKE_CURRENT_BINARY_DIR}/${target}.app/GameResources")
+  endif()
   add_custom_target(${target}_resources
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${GAME_OF_LIFE_RESOURCES}" "$<TARGET_BUNDLE_DIR:${target}>/GameResources"
+    DEPENDS ${bundle_copy_dependency}
     VERBATIM)
   add_dependencies(${target} ${target}_resources)
   target_link_libraries(${target} PRIVATE gol_host "-framework Security" "-framework SwiftUI" "-framework CoreGraphics" "-framework MetalKit")

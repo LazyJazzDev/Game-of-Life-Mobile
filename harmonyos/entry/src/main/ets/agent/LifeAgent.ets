@@ -1,6 +1,8 @@
 import { http } from '@kit.NetworkKit';
 
+export interface TemplatePart { name: string; x: number; y: number; rotation?: number; mirror?: number; columns?: number; rows?: number; dx?: number; dy?: number; }
 export interface AgentArgs {
+  rle?: string; parts?: TemplatePart[]; mode?: string;
   action?: string; value?: number; x?: number; y?: number;
   width?: number; height?: number; cells?: number[][]; query?: string; name?: string;
 }
@@ -42,6 +44,10 @@ export class LifeAgent {
     this.progress = this.text('已停止', 'Stopped'); this.changed();
   }
   private toolProgress(name: string, args: AgentArgs): string {
+    if (name === 'template_save' || name === 'template_compose') return this.text('正在保存和组合图样模板…', 'Saving and composing templates…');
+    if (name === 'template_place') return this.text('正在批量放置完整模板…', 'Placing the complete template…');
+    if (name === 'canvas_summary') return this.text('正在核验画布结构…', 'Verifying canvas structure…');
+    if (name === 'canvas_fit') return this.text('正在适配结构视野…', 'Fitting the structure…');
     if (name === 'pattern_search') return this.text('正在查找已知结构…', 'Finding known structures…');
     if (name === 'pattern_place') return this.text('正在放置结构：', 'Placing pattern: ') + (args.name ?? '');
     if (name === 'canvas_state') return this.text('正在检查画布状态…', 'Checking canvas state…');
@@ -62,7 +68,7 @@ export class LifeAgent {
     this.busy = true;
     const epoch = ++this.epoch;
     if (this.history.length === 0) this.history.push({ role: 'system', content:
-      'You are Life Agent inside Conway Life (B3/S23). Reply in the user language. Use tools to inspect and edit the canvas. Coordinates are center origin, x right, y down. Use catalog patterns. Read before editing, preserve unrelated cells. Never reset/randomize unless requested. These actions need user confirmation, so stop and wait after requesting them. Do not claim success on failed tools. Tests are finite observations, not proofs. Links are references, not fetched text. Keep responses concise.' });
+      'You are Life Agent inside Conway Life (B3/S23). Reply in the user language. Use tools to inspect and edit the canvas. Coordinates are center origin, x right, y down. Use catalog patterns. For large or repeated designs, save small RLE templates, compose named templates with grid repetition, and place the whole compound template once. Template anchors are TOP-LEFT; pattern_place anchors are CENTER. Inspect canvas_summary before writing and compare template population/hash afterwards. A scaled drawing of cells is not a functioning metacell; never claim it simulates macro Life without a real metacell construction. Read before editing, preserve unrelated cells. Never reset/randomize unless requested. These actions need user confirmation, so stop and wait after requesting them. Do not claim success on failed tools. Tests are finite observations, not proofs. Links are references, not fetched text. Keep responses concise.' });
     this.history.push({ role: 'user', content: input.trim() });
     let failed = false;
     let toolCount = 0;

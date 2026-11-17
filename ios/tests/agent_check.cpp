@@ -1,5 +1,6 @@
 #include <rapidjson/document.h>
 
+#include <chrono>
 #include <iostream>
 
 #include "demos/DemoSession.h"
@@ -46,6 +47,59 @@ int main(int argc, char **argv) {
   session.Game()->CompleteConfirmation(false);
   if (run(R"({"action":"read","x":1000,"y":1000,"width":3,"height":3})") != result)
     return 6;
+  const auto directory =
+      std::filesystem::temp_directory_path() /
+      ("life-agent-gpu-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+  session.Game()->RestoreSession((directory / "LastCanvas.gol").string());
+  run(R"({"action":"template_save","name":"block","rle":"x=2,y=2,rule=B3/S23\n2o$2o!"})");
+  run(R"({"action":"template_compose","name":"block_grid","width":160,"height":160,"parts":[{"name":"block","x":0,"y":0,"columns":32,"rows":32,"dx":5,"dy":5}]})");
+  // Add a second grid to exceed the legacy 4096-cell tool limit.
+  run(R"({"action":"template_compose","name":"large","width":320,"height":160,"parts":[{"name":"block_grid","x":0,"y":0},{"name":"block_grid","x":160,"y":0}]})");
+  const auto info = run(R"({"action":"template_info","name":"large"})");
+  run(R"({"action":"template_place","name":"large","x":2000,"y":2000,"mode":"empty_only"})");
+  const auto summary = run(R"({"action":"summary","x":2000,"y":2000,"width":320,"height":160})");
+  rapidjson::Document expected, actual;
+  expected.Parse(info.c_str());
+  actual.Parse(summary.c_str());
+  if (actual["population"].GetUint64() != 8192 ||
+      std::string(actual["hash"].GetString()) != expected["hash"].GetString())
+    return 7;
+  run(R"({"action":"template_place","name":"large","x":2001,"y":2000,"mode":"empty_only"})", false);
+  if (run(R"({"action":"summary","x":2000,"y":2000,"width":320,"height":160})") != summary)
+    return 8;
+  run(R"({"action":"step","value":4})");
+  if (run(R"({"action":"summary","x":2000,"y":2000,"width":320,"height":160})") != summary)
+    return 9;
+  run(R"({"action":"template_place","name":"large","x":8100,"y":2000,"mode":"merge"})", false);
+  session.Game()->SetAgentBuiltinDirectory(std::filesystem::path(__FILE__).parent_path().parent_path().parent_path() /
+                                           "mobile/AgentTemplates");
+  std::string parts = "[";
+  for (int y = 0; y < 5; ++y)
+    for (int x = 0; x < 5; ++x) {
+      if (x || y)
+        parts += ",";
+      parts += "{\"name\":\"otca_b3s23_" + std::string(y == 2 && x >= 1 && x <= 3 ? "on" : "off") +
+               "\",\"x\":" + std::to_string(x * 2048) + ",\"y\":" + std::to_string(y * 2048) + "}";
+    }
+  parts += "]";
+  run("{\"action\":\"template_compose\",\"name\":\"macro_blinker\",\"width\":10250,\"height\":10250,\"parts\":" +
+      parts + "}");
+  run(R"({"action":"template_place","name":"macro_blinker","x":-5125,"y":-5125,"mode":"replace"})");
+  auto macro = run(R"({"action":"summary","x":-5125,"y":-5125,"width":10250,"height":10250})");
+  actual.Parse(macro.c_str());
+  if (actual["population"].GetUint64() != 724793 || std::string(actual["hash"].GetString()) != "16266944192161686577")
+    return 10;
+  run(R"({"action":"fit","x":-5125,"y":-5125,"width":10250,"height":10250})");
+  run(R"({"action":"step","value":64})");
+  macro = run(R"({"action":"summary","x":-5125,"y":-5125,"width":10250,"height":10250})");
+  actual.Parse(macro.c_str());
+  if (actual["population"].GetUint64() != 678123 || std::string(actual["hash"].GetString()) != "4885622696760063268")
+    return 11;
+  std::cout << "PASS real 5x5 OTCA construction and 64 GPU generations match independent Golly reference\n";
+  std::error_code ec;
+  std::filesystem::remove_all(directory, ec);
+  std::cout
+      << "PASS durable compound templates, 8192-cell single batch, GPU fingerprint, atomic conflict and evolution\n";
   std::cout
       << "PASS Agent controls, invalid parameters, idempotent edits, exact blinker step/readback and cancelled reset\n";
 }

@@ -943,6 +943,9 @@ struct Index {
       }
       return this.agentNative({ action: 'edit', cells: cells });
     }
+    if (name === 'metacell_guide' || name === 'template_save' || name === 'template_list' || name === 'template_info' || name === 'template_compose' || name === 'template_place') { args.action = name; return this.agentNative(args); }
+    if (name === 'canvas_fit') { args.action = 'fit'; return this.agentNative(args); }
+    if (name === 'canvas_summary') { args.action = 'summary'; return this.agentNative(args); }
     if (name === 'canvas_state') return this.agentNative({ action: 'state' });
     if (name === 'canvas_read') args.action = 'read';
     else if (name === 'canvas_edit') args.action = 'edit';

@@ -129,9 +129,10 @@ std::string DesktopGameSession::SaveSession(const std::string &path) {
 }
 
 std::string DesktopGameSession::RestoreSession(const std::string &path) {
+  agent_templates_.SetDirectory(std::filesystem::path(path).parent_path() / "AgentTemplates");
   return life_->RestoreSession(path);
 }
 
 std::string DesktopGameSession::AgentCommand(const std::string &json) {
-  return mobile_agent::Execute(*life_, json);
+  return mobile_agent::Execute(*life_, json, &agent_templates_);
 }
