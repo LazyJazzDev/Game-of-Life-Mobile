@@ -77,7 +77,10 @@ import WebKit
           self.fetch=undefined; self.importScripts=undefined;
           py.globals.set('documents',py.toPy(e.data.documents));
           py.globals.set('_evolve', (cells,n)=>life.evolve(cells.toJs ? cells.toJs() : cells,n));
+          py.globals.set('_parse_rle', text=>life.parseRLE(text));
+          py.globals.set('_encode_rle', cells=>life.encodeRLE(cells.toJs ? cells.toJs() : cells));
           py.runPython('def life_evolve(cells, generations):'+String.fromCharCode(10)+'    return _evolve(cells, generations).to_py()');
+          py.runPython('def life_parse_rle(text):'+String.fromCharCode(10)+'    return _parse_rle(text).to_py()'+String.fromCharCode(10)+'def life_encode_rle(cells):'+String.fromCharCode(10)+'    return _encode_rle(cells).to_py()');
           await py.runPythonAsync(e.data.code);
           const value=py.globals.get('result');
           result=value && value.toJs ? value.toJs({dict_converter:Object.fromEntries}) : value;
