@@ -297,9 +297,12 @@ Mate 70 build 103 passed the same Python runtime regression as iOS (custom
 list subclasses, helper-name collisions, RLE round trips and repeated 66,000-cell
 results). Streaming tests cover split UTF-8 bytes and tool arguments, reasoning
 isolation, truncation recovery, cancellation, consent and HTTP errors. Existing
-privacy startup/hosted policy and file recovery regressions passed. A fresh-install
-live Agent integration run is pending the system privacy confirmation; do not
-interpret these checks as a full on-device 6×6 OTCA trial.
+privacy startup/hosted policy and file recovery regressions passed. Build 104 completed a fresh-install live DeepSeek Flash integration run on Mate 70:
+25 tool calls exercised public fetching, workspace read/write, JavaScript and
+Python evolution, template-save error recovery and native canvas placement.
+The final three-cell oscillator population/hash matched its saved template and
+the canvas remained paused. Evidence is in `out/agent/mate70-port104/`. This is
+not a full on-device 6×6 OTCA trial.
 
 Debug-only startup parameter `researchSelftest` accepts Python test source and
 writes `files/ResearchSelftest.json` through the same research/tool wrapper.
