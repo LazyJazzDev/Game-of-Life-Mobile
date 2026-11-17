@@ -35,3 +35,5 @@ The disposable-worker implementation is shared with HarmonyOS in
 `mobile/agent-research.js`. iOS bundles this file directly; HarmonyOS stages it
 with `harmonyos/prepare_agent.py`. Platform code handles document fetching,
 worker hosting and native template saves.
+
+Both platforms default to `deepseek-flash`, as requested by the user.

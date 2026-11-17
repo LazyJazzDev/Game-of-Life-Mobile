@@ -23,12 +23,7 @@ struct AgentActivity: Identifiable {
   @Published var activities: [AgentActivity] = []
   @Published var startedAt = Date()
   private let key: String
-  private let model: String = {
-    #if targetEnvironment(simulator)
-    if ProcessInfo.processInfo.environment["LONGMARCH_AGENT_MODEL"] == "deepseek-flash" { return "deepseek-flash" }
-    #endif
-    return "deepseek-v4-pro"
-  }()
+  private let model = "deepseek-flash"
   private let initialReasoningEffort: String = {
     #if targetEnvironment(simulator)
     if ProcessInfo.processInfo.environment["LONGMARCH_AGENT_EFFORT"] == "low" { return "low" }

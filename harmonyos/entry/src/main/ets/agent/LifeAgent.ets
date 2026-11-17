@@ -100,7 +100,7 @@ export class LifeAgent {
     }
     if (JSON.stringify(this.history).length > 2*1024*1024) throw new Error('context_limit');
     const request = http.createHttp(); this.request = request;
-    const body: RequestBody = { model: 'deepseek-v4-pro', messages: this.history, tools: this.tools,
+    const body: RequestBody = { model: 'deepseek-flash', messages: this.history, tools: this.tools,
       thinking: { type: 'enabled' }, reasoning_effort: effort, max_tokens: 32768, stream: true };
     const decoder = new util.TextDecoder('utf-8');
     let buffer = '', content = '', reasoning = '', failure = '';

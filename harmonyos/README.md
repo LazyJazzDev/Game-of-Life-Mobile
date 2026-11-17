@@ -286,7 +286,7 @@ bridge. The ArkWeb bridge only returns execution results. Fetched documents
 and Agent-authored programs live in an in-memory workspace; returned RLE
 artifacts are saved through the native template implementation.
 
-The DeepSeek V4 Pro loop supports 192 rounds / 768 tool calls, streamed replies
+The DeepSeek Flash loop supports 192 rounds / 768 tool calls, streamed replies
 and tool arguments, an activity list and current-step timer. Oversized model
 responses are discarded without executing partial tool calls, then retried
 with smaller steps and low reasoning effort. Cancellation also stops the

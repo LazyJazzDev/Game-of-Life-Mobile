@@ -53,6 +53,6 @@ function reply(message, finish = 'stop') {
   respond=async()=>({status:401,body:'secret server diagnostic'});
   await a.send('fail');assert.equal(a.busy,false);assert.ok(!a.lines.at(-1).text.includes('secret server diagnostic'));
   a.consent=false;const before=requests.length;await a.send('no consent');assert.equal(requests.length,before);assert.ok(destroyed>0);
-  assert.ok(requests[0].model==='deepseek-v4-pro');
+  assert.ok(requests[0].model==='deepseek-flash');
   console.log('PASS streaming UTF-8/tool fragments, live feedback, reasoning isolation, truncation recovery, cancellation, consent and HTTP errors');
 })().catch(e=>{console.error(e);process.exit(1);});
