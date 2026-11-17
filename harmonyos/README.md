@@ -268,6 +268,19 @@ of My Patterns; explicit screenshot capture sessions do not read or replace it.
 An abrupt process kill without a background callback restores the last completed
 checkpoint.
 
+## Current Agent provider
+
+Both platforms now use OpenAI `gpt-6.1-sol` with high reasoning via Responses.
+`prepare_agent.py` stages the local `tools/openai-api.key`; the credential remains
+ignored by Git. Consent UI names OpenAI. Requests disable server-side response
+storage, preserve encrypted reasoning/assistant phase for tool continuation,
+and execute only complete responses. Stop and network-error recovery retain
+completed task context without replaying incomplete tool batches. The loop has
+no fixed round or tool-call limit. See `ios/agent/README.md` for the shared tool
+contract and fresh-install testing requirements.
+
+The following build reports describe historical DeepSeek validation runs.
+
 ## Agent research parity (1.0.3 build 103)
 
 HarmonyOS now stages the same 17-tool contract, generic system prompt, reference

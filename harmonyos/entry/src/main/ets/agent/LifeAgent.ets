@@ -13,26 +13,34 @@ export interface AgentArgs {
 interface ToolFunction { name: string; arguments: string; }
 interface ToolCall { id: string; type: string; function: ToolFunction; }
 interface Message {
-  role: string; content: string; reasoning_content?: string;
+  role: string; content: string; response_items?: ResponseItem[];
   tool_calls?: ToolCall[]; tool_call_id?: string;
 }
-interface DeltaFunction { name?: string; arguments?: string; }
-interface DeltaCall { index: number; id?: string; function?: DeltaFunction; }
-interface Delta { content?: string; reasoning_content?: string; tool_calls?: DeltaCall[]; }
-interface Choice { delta?: Delta; finish_reason?: string; }
-interface Completion { choices: Choice[]; }
-interface RequestBody {
-  model: string; messages: Message[]; tools: Object[];
-  thinking: Thinking; reasoning_effort: string; max_tokens: number; stream: boolean;
+interface ResponseContent { type: string; text?: string; refusal?: string; }
+interface ResponseItem {
+  type?: string; id?: string; role?: string; content?: string | ResponseContent[];
+  call_id?: string; name?: string; arguments?: string; output?: string;
+  created_by?: Object;
 }
-interface Thinking { type: string; }
+interface ResponsePayload { status: string; output?: ResponseItem[]; incomplete_details?: IncompleteDetails; }
+interface IncompleteDetails { reason: string; }
+interface ResponseEvent { type: string; delta?: string; item?: ResponseItem; response?: ResponsePayload; }
+interface FunctionDefinition { name: string; description?: string; parameters: Object; }
+interface ToolDefinition { type: string; function: FunctionDefinition; }
+interface ResponseTool { type: string; name: string; description?: string; parameters: Object; strict: boolean; }
+interface RequestBody {
+  model: string; input: ResponseItem[]; tools: ResponseTool[];
+  reasoning: Reasoning; max_output_tokens: number; stream: boolean; store: boolean;
+  include: string[]; parallel_tool_calls: boolean;
+}
+interface Reasoning { effort: string; }
 export interface AgentTrace { name: string; arguments: string; result: string; }
 export interface AgentLine { role: string; text: string; }
 
 export interface AgentActivity { title: string; detail: string; started: number; finished: boolean; failed: boolean; }
 export class LifeAgent {
   key: string = '';
-  readonly model: string = 'deepseek-flash';
+  readonly model: string = 'gpt-6.1-sol';
   systemPrompt: string = '';
   liveResponse: string = '';
   activities: AgentActivity[] = [];
@@ -53,13 +61,33 @@ export class LifeAgent {
   private epoch: number = 0;
   zh: boolean = true;
   text(zh: string, en: string): string { return this.zh ? zh : en; }
+  private recoverHistory(): void {
+    let index = 0;
+    while (index < this.history.length) {
+      const calls = this.history[index].tool_calls;
+      if (!calls?.length) { index++; continue; }
+      const pending = new Set<string>(calls.map((call: ToolCall) => call.id));
+      let next = index + 1;
+      while (next < this.history.length && this.history[next].role === 'tool') {
+        const id = this.history[next].tool_call_id;
+        if (id) pending.delete(id);
+        next++;
+      }
+      if (pending.size) {
+        this.history = this.history.slice(0, index);
+        this.history.push({role: 'user', content: 'The previous run was interrupted during a tool batch. The original request and earlier completed work remain in this conversation. Some interrupted actions may already have taken effect; inspect current state before repeating any edits. Retained research documents remain available.'});
+        return;
+      }
+      index = next;
+    }
+  }
   cancel(): void {
     const wasBusy = this.busy;
     this.epoch++; this.endStream?.(); this.endStream = undefined; this.cancelResearch();
     if (this.liveResponse.trim()) this.lines.push({role: 'assistant', text: this.liveResponse});
     clearInterval(this.ticker); this.liveResponse = '';
     this.request?.destroy(); this.request = undefined;
-    this.busy = false; this.history = [];
+    this.busy = false; this.recoverHistory();
     if (wasBusy) this.progress = this.text('已停止', 'Stopped'); this.changed();
   }
   private updateBrief(value: string): void {
@@ -106,6 +134,15 @@ export class LifeAgent {
     if (item) { item.finished = true; item.failed = error.length > 0; if (error) item.detail = error.slice(0, 240); }
     this.changed();
   }
+  private responseInput(): ResponseItem[] {
+    const input: ResponseItem[] = [];
+    for (const message of this.history) {
+      if (message.response_items) input.push(...message.response_items);
+      else if (message.role === 'tool') input.push({type: 'function_call_output', call_id: message.tool_call_id, output: message.content});
+      else input.push({role: message.role === 'system' ? 'developer' : message.role, content: message.content});
+    }
+    return input;
+  }
   private async completion(effort: string, epoch: number): Promise<Message> {
     if (JSON.stringify(this.history).length > 384*1024) {
       for (let i = 1; i < this.history.length-8; i++) {
@@ -114,67 +151,91 @@ export class LifeAgent {
           m.content = m.content.slice(0,1400) + '\n[Older output abbreviated; use research_read/script to inspect retained workspace documents.]';
       }
     }
-    if (JSON.stringify(this.history).length > 2*1024*1024) throw new Error('context_limit');
+    const input = this.responseInput();
+    if (JSON.stringify(input).length > 2*1024*1024) throw new Error('context_limit');
+    const functions: ResponseTool[] = this.tools.map((item: Object): ResponseTool => {
+      const fn = (item as ToolDefinition).function;
+      return {type: 'function', name: fn.name, description: fn.description, parameters: fn.parameters, strict: false};
+    });
     const request = http.createHttp(); this.request = request;
-    const body: RequestBody = { model: this.model, messages: this.history, tools: this.tools,
-      thinking: { type: 'enabled' }, reasoning_effort: effort, max_tokens: 32768, stream: true };
+    const body: RequestBody = {model: this.model, input, tools: functions,
+      reasoning: {effort}, max_output_tokens: 32768, stream: true, store: false,
+      include: ['reasoning.encrypted_content'], parallel_tool_calls: false};
     const decoder = new util.TextDecoder('utf-8');
-    let buffer = '', content = '', reasoning = '', failure = '';
+    let buffer = '', content = '', failure = '', pendingName = '', argumentBytes = 0;
     let done = false;
-    const calls: ToolCall[] = [];
+    let output: ResponseItem[] = [];
     const ended = new Promise<void>((resolve: () => void) => {
       this.endStream = resolve;
       request.on('dataEnd', () => resolve());
     });
     request.on('dataReceive', (bytes: ArrayBuffer) => {
       if (epoch !== this.epoch || failure.length > 0) return;
-      buffer += decoder.decodeToString(new Uint8Array(bytes), { stream: true });
+      buffer += decoder.decodeToString(new Uint8Array(bytes), {stream: true});
       let end = buffer.indexOf('\n');
       while (end >= 0) {
         const line = buffer.slice(0, end).trim(); buffer = buffer.slice(end+1);
         end = buffer.indexOf('\n');
         if (!line.startsWith('data:')) continue;
         const raw = line.slice(5).trim();
-        if (raw === '[DONE]') { done = true; continue; }
+        if (raw === '[DONE]') continue;
         try {
-          const choice = (JSON.parse(raw) as Completion).choices?.[0];
-          const delta = choice?.delta;
-          if (choice?.finish_reason === 'length') { failure = 'response_truncated'; continue; }
-          if (!delta) continue;
-          if (delta.reasoning_content) { reasoning += delta.reasoning_content; }
-          if (delta.content) { content += delta.content; this.liveResponse = content; this.updateBrief(content); }
-          for (const change of delta.tool_calls ?? []) {
-            if (!calls[change.index]) calls[change.index] = { id: '', type: 'function', function: {name: '', arguments: ''} };
-            const call = calls[change.index];
-            if (change.id) call.id = change.id;
-            call.function.name += change.function?.name ?? '';
-            call.function.arguments += change.function?.arguments ?? '';
-            if (call.function.name === 'research_script' || call.function.name === 'research_write') {
+          const event = JSON.parse(raw) as ResponseEvent;
+          if (event.type === 'response.output_text.delta' || event.type === 'response.refusal.delta') {
+            content += event.delta ?? ''; this.liveResponse = content; this.updateBrief(content);
+          } else if (event.type === 'response.output_item.added' && event.item?.type === 'function_call') {
+            pendingName = event.item.name ?? ''; argumentBytes = 0;
+          } else if (event.type === 'response.function_call_arguments.delta') {
+            argumentBytes += event.delta?.length ?? 0;
+            if (pendingName === 'research_script' || pendingName === 'research_write') {
               const item = this.activities[this.activities.length-1];
-              if (item) { item.detail = `${Math.floor(call.function.arguments.length/1024)} KB`; }
+              if (item) item.detail = `${Math.floor(argumentBytes/1024)} KB`;
             }
+          } else if (event.type === 'response.incomplete') {
+            failure = event.response?.incomplete_details?.reason === 'max_output_tokens' ? 'response_truncated' : 'incomplete_response';
+          } else if (event.type === 'response.failed' || event.type === 'error') {
+            failure = 'response_failed';
+          } else if (event.type === 'response.completed') {
+            if (event.response?.status !== 'completed' || !event.response.output) { failure = 'invalid_response'; continue; }
+            output = event.response.output;
+            for (const item of output) item.created_by = undefined;
+            done = true;
           }
-          if (content.length + reasoning.length > 256*1024) failure = 'response_truncated';
+          if (content.length + argumentBytes > 512*1024) failure = 'response_truncated';
           if (Date.now()-this.updated > 100) { this.updated = Date.now(); this.changed(); }
         } catch (_) { failure = 'invalid_stream'; }
       }
     });
     try {
-      const status = await request.requestInStream('https://api.deepseek.com/chat/completions', {
-        method: http.RequestMethod.POST, header: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.key.trim()}` },
+      const status = await request.requestInStream('https://api.openai.com/v1/responses', {
+        method: http.RequestMethod.POST, header: {'Content-Type': 'application/json', 'Authorization': `Bearer ${this.key.trim()}`},
         extraData: JSON.stringify(body), connectTimeout: 30000, readTimeout: 120000
       });
       if (status !== 200) throw new Error(`HTTP ${status}`);
       await ended;
       if (failure) throw new Error(failure);
       if (!done) throw new Error('incomplete_stream');
-      const message: Message = { role: 'assistant', content: content, reasoning_content: reasoning };
+      const calls: ToolCall[] = [], texts: string[] = [];
+      for (const item of output) {
+        if (item.type === 'message' && Array.isArray(item.content)) {
+          for (const part of item.content as ResponseContent[]) {
+            if (part.text) texts.push(part.text);
+            else if (part.refusal) texts.push(part.refusal);
+          }
+        } else if (item.type === 'function_call') {
+          if (!item.call_id || !item.name || typeof item.arguments !== 'string') throw new Error('invalid_tool_call');
+          calls.push({id: item.call_id, type: 'function', function: {name: item.name, arguments: item.arguments}});
+        }
+      }
+      content = texts.join('\n'); this.liveResponse = content;
+      const message: Message = {role: 'assistant', content, response_items: output};
       if (calls.length) message.tool_calls = calls;
       return message;
     } finally { this.endStream = undefined; request.destroy(); if (this.request === request) this.request = undefined; }
   }
   async send(input: string): Promise<void> {
     if (this.busy || !this.key.trim() || !this.consent || !input.trim() || !this.systemPrompt) return;
+    this.recoverHistory();
     this.lines.push({role: 'user', text: input.trim()});
     this.progress = this.text('等待 Agent 的工作简报…', 'Waiting for the Agent’s work brief…');
     this.busy = true; const epoch = ++this.epoch;

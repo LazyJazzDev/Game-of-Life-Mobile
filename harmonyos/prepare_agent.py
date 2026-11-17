@@ -14,7 +14,7 @@ shutil.copy2(root / 'mobile/agent-preview.js', out / 'agent-preview.js')
 source = (root / 'ios/agent/LifeAgent.swift').read_text()
 prompt = re.search(r'history=\[\["role":"system","content":(".*?")\]\]', source).group(1)
 (out / 'agent-system.txt').write_text(json.loads(prompt))
-key = root / 'tools/deepseek-api.key'
+key = root / 'tools/openai-api.key'
 if not key.is_file():
     raise SystemExit('Missing local Agent credential file')
 shutil.copy2(key, out / 'AgentCredential.key')

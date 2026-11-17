@@ -39,7 +39,20 @@ The disposable-worker implementation is shared with HarmonyOS in
 with `harmonyos/prepare_agent.py`. Platform code handles document fetching,
 worker hosting and native template saves.
 
-Both platforms default to `deepseek-flash`, as requested by the user.
+Both platforms use OpenAI `gpt-6.1-sol` with high reasoning through the Responses
+API. The local credential is `tools/openai-api.key` (iOS can override this with
+`LIFE_AGENT_KEY_FILE`; reconfigure existing build directories when switching keys).
+Requests use `store: false` and sequential function calls. Complete response
+items, including assistant phase and any encrypted reasoning, are replayed with
+`function_call_output`; output-only provenance is removed. Only completed
+responses can execute tools; incomplete output never executes partial calls.
+
+Network failures and Stop preserve the original request and completed tool
+chains in memory. An interrupted batch is removed from protocol history and the
+next run is told to inspect actual state before repeating edits. This preserves
+context for “continue” without blindly replaying actions. Research documents
+remain in memory for the lifetime of this Agent instance; this is not disk-based
+recovery after process termination.
 
 Research responses contain bounded excerpts. `research_find` searches the full
 retained documents (including repository indexes) and returns document IDs,
