@@ -40,7 +40,10 @@ struct AgentActivity: Identifiable {
     if let code=ProcessInfo.processInfo.environment["LONGMARCH_RESEARCH_SELFTEST"] {
       Task {
         let result:[String:Any]
-        do { result=try await research.script(code,language:"python") }
+        do {
+          let raw=try await execute("research_script",["code":code,"language":"python"])
+          result=(try JSONSerialization.jsonObject(with:Data(raw.utf8))) as? [String:Any] ?? ["ok":false]
+        }
         catch { result=["ok":false,"error":error.localizedDescription] }
         let output=FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("ResearchSelftest.json")
         try? JSONSerialization.data(withJSONObject:result,options:.prettyPrinted).write(to:output)

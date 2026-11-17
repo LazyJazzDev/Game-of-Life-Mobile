@@ -96,6 +96,9 @@ import WebKit
     """
     let result=try await web.callAsyncJavaScript(body,arguments:["code":code,"documents":documents,"engine":engine,"language":language],in:nil,contentWorld:.page)
     guard let object=result as? [String:Any] else { throw AgentFailure.invalidResponse }
+    guard JSONSerialization.isValidJSONObject(object) else {
+      return ["ok":false,"error":"invalid_script_result","detail":"Return a JSON-compatible object with finite numbers; NaN, Infinity, functions and cyclic objects are not supported."]
+    }
     return object
   }
 }
