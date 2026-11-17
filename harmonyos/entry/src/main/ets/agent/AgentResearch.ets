@@ -2,6 +2,10 @@ import { http } from '@kit.NetworkKit';
 import { webview } from '@kit.ArkWeb';
 import { util } from '@kit.ArkTS';
 
+interface Repository { full_name: string; description?: string; html_url: string; url: string; default_branch: string; }
+interface RepositoryMatch { name: string; description: string; url: string; api_url: string; default_branch: string; }
+interface RepositoryListing { total_count: number; items: Repository[]; }
+interface FetchedDocument { ok: boolean; document?: string; }
 interface ResearchMatch { document: string; offset: number; content: string; }
 export interface ResearchTemplate { name: string; rle: string; }
 export interface ResearchValue { templates?: ResearchTemplate[]; result?: Object; }
@@ -54,6 +58,16 @@ export class AgentResearch {
     const end = Math.min(value.length, start + Math.max(1, Math.min(length, 24000)));
     return JSON.stringify({ ok: true, document: id, url: this.sources[id], length: value.length,
       offset: start, next_offset: end, content: value.slice(start, end), untrusted_source: true });
+  }
+  async search(query: string): Promise<string> {
+    if (!query.trim() || query.length>240) return '{"ok":false,"error":"invalid_query"}';
+    const fetched = await this.fetch('https://api.github.com/search/repositories?per_page=10&q=' + encodeURIComponent(query));
+    const result = JSON.parse(fetched) as FetchedDocument;
+    if (!result.ok || !result.document) return fetched;
+    const listing = JSON.parse(this.documents[result.document]) as RepositoryListing;
+    const matches = listing.items.map((item: Repository): RepositoryMatch => ({ name: item.full_name, description: item.description ?? '',
+      url: item.html_url, api_url: item.url, default_branch: item.default_branch }));
+    return JSON.stringify({ok: true, document: result.document, matches, total_count: listing.total_count, untrusted_source: true});
   }
   find(query: string, document: string = ''): string {
     if (!query || query.length > 160) return '{"ok":false,"error":"invalid_query"}';

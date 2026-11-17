@@ -709,5 +709,30 @@
         "additionalProperties": false
       }
     }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "research_search",
+      "description": "Discover public reference repositories on GitHub using a short keyword query. Returns repository titles, descriptions and API/HTML URLs; use research_fetch to inspect discovered sources. This searches repository metadata, not code contents or the whole web. Prefer looking for existing implementations and references before expensive blind experiments.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence in the user's language explaining the concrete current work and its purpose or the finding being checked. This is shown in chat and the collapsed status bar. No generic tool-stage labels or source code."
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 240
+          }
+        },
+        "required": [
+          "work_brief",
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    }
   }
 ]

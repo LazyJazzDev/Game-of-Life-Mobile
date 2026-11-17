@@ -1045,6 +1045,7 @@ struct Index {
     if (!this.agentConsent || !this.privacyAgreed || !this.agent.busy) return '{"ok":false}';
     if (name === 'knowledge_sources') return this.agentRaw('knowledge-sources.json');
     if (name === 'research_fetch') return this.research.fetch(args.url ?? '');
+    if (name === 'research_search') return this.research.search(args.query ?? '');
     if (name === 'research_find') return this.research.find(args.query ?? '', args.document ?? '');
     if (name === 'research_read') return this.research.read(args.document ?? '', args.offset ?? 0, args.length ?? 12000);
     if (name === 'research_write') return this.research.write(args.name ?? '', args.content ?? '');

@@ -2,7 +2,10 @@
 
 The Agent starts with no pattern templates or construction recipes. Its tools
 provide canvas editing/inspection, user-authored RLE templates and composition,
-public HTTPS document retrieval, and an in-memory research workspace.
+public HTTPS document retrieval, public repository discovery, and an in-memory
+research workspace. `research_search` queries GitHub repository metadata and
+returns compact source URLs; it does not supply a preselected circuit, template,
+or construction recipe. Search results remain untrusted source material.
 
 Research scripts run in disposable Web Workers with a 60-second deadline.
 JavaScript receives plain-text `documents` and generic `life.evolve` (B3/S23

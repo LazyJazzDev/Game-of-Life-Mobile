@@ -63,6 +63,23 @@ import WebKit
     return read(id,0,12000)
   }
 
+  func search(_ query:String) async throws -> [String:Any] {
+    guard !query.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty, query.count<=240 else { return ["ok":false,"error":"invalid_query"] }
+    var url=URLComponents(string:"https://api.github.com/search/repositories")!
+    url.queryItems=[URLQueryItem(name:"q",value:query),URLQueryItem(name:"per_page",value:"10")]
+    let fetched=try await fetch(url.url!.absoluteString)
+    guard fetched["ok"] as? Bool == true, let id=fetched["document"] as? String,
+      let raw=documents[id], let data=raw.data(using:.utf8),
+      let listing=try JSONSerialization.jsonObject(with:data) as? [String:Any],
+      let items=listing["items"] as? [[String:Any]] else { return fetched }
+    let matches=items.map { item in
+      ["name":item["full_name"] as? String ?? "", "description":item["description"] as? String ?? "",
+       "url":item["html_url"] as? String ?? "", "api_url":item["url"] as? String ?? "",
+       "default_branch":item["default_branch"] as? String ?? ""]
+    }
+    return ["ok":true,"document":id,"matches":matches,"total_count":listing["total_count"] as? Int ?? 0,"untrusted_source":true]
+  }
+
   func read(_ id:String,_ offset:Int,_ length:Int) -> [String:Any] {
     guard let text=documents[id], offset>=0 else { return ["ok":false,"error":"unknown_document_or_offset"] }
     let chars=Array(text), start=min(offset,chars.count), end=min(chars.count,start+max(1,min(length,24000)))

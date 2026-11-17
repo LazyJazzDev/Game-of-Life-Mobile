@@ -24,3 +24,18 @@ assert.equal(JSON.parse(a.find('x'.repeat(161))).ok,false);
 assert.equal(JSON.parse(a.find('logic','work_second')).matches.length,1);
 r=JSON.parse(a.find('x'));assert.equal(r.matches.length,20);assert.equal(r.more_possible,true);
 console.log('PASS retained-document search beyond excerpts, literal punctuation, offsets, filtering, invalid input and result bounds');
+(async()=>{
+  let url='';
+  a.fetch=async input=>{
+    url=input;a.documents.repo=JSON.stringify({total_count:1,items:[{full_name:'example/reference',description:null,html_url:'https://github.com/example/reference',url:'https://api.github.com/repos/example/reference',default_branch:'main'}]});
+    return JSON.stringify({ok:true,document:'repo'});
+  };
+  const found=JSON.parse(await a.search('cellular automata & logic'));
+  assert.equal(new URL(url).searchParams.get('q'),'cellular automata & logic');
+  assert.equal(found.matches[0].name,'example/reference');assert.equal(found.matches[0].description,'');
+  assert.equal(found.total_count,1);assert.equal(found.document,'repo');assert.equal(found.untrusted_source,true);
+  assert.equal(JSON.parse(await a.search('   ')).ok,false);
+  a.fetch=async()=>'{"ok":false,"status":429}';
+  assert.equal(JSON.parse(await a.search('logic')).status,429);
+  console.log('PASS repository discovery, query encoding, compact metadata, retained source and HTTP failures');
+})().catch(e=>{console.error(e);process.exit(1);});
