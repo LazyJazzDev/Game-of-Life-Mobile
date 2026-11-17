@@ -116,13 +116,18 @@ struct AgentActivity: Identifiable {
     let url=Bundle.main.url(forResource:"agent-tools",withExtension:"json")!
     let tools=try JSONSerialization.jsonObject(with:Data(contentsOf:url))
     var toolCount=0
+    var reasoningEffort="high"
     for round in 0..<192 {
       try Task.checkCancellation()
       progress=text("正在思考", "Thinking")+" · \(round+1)/192"
       activities.append(AgentActivity(title:progress))
       let response: [String:Any]
-      do { response=try await completion(tools) }
+      do {
+        response=try await completion(tools,reasoningEffort:reasoningEffort)
+        reasoningEffort="high"
+      }
       catch AgentFailure.truncated {
+        reasoningEffort="low"
         liveResponse=""
         if let last=activities.indices.last { activities[last].finished=true;activities[last].failed=true;activities[last].detail=text("回复过长，正在拆分后继续","Response too long; continuing with smaller steps") }
         history.append(["role":"user","content":"The previous response exceeded the output limit and no incomplete tool call was executed. Continue the original task. Break code into small reusable modules using research_write; do not repeat a huge program in each call. Emit one small concrete step now."])
@@ -196,7 +201,7 @@ struct AgentActivity: Identifiable {
     }
   }
 
-  private func completion(_ tools:Any) async throws -> [String:Any] {
+  private func completion(_ tools:Any, reasoningEffort:String) async throws -> [String:Any] {
     var request=URLRequest(url:URL(string:"https://api.deepseek.com/chat/completions")!)
     request.httpMethod="POST";request.timeoutInterval=120
     request.setValue("Bearer \(key)",forHTTPHeaderField:"Authorization")
@@ -213,7 +218,7 @@ struct AgentActivity: Identifiable {
     let historySize=try JSONSerialization.data(withJSONObject:history).count
     guard historySize <= 2*1024*1024 else { history=[];throw AgentFailure.truncated }
     request.httpBody=try JSONSerialization.data(withJSONObject:["model":"deepseek-v4-pro","messages":history,"tools":tools,
-      "thinking":["type":"enabled"],"reasoning_effort":"high","max_tokens":32768,"stream":true])
+      "thinking":["type":"enabled"],"reasoning_effort":reasoningEffort,"max_tokens":32768,"stream":true])
     let (bytes,response)=try await URLSession.shared.bytes(for:request)
     guard let http=response as? HTTPURLResponse, http.statusCode==200 else {
       throw AgentFailure.http((response as? HTTPURLResponse)?.statusCode ?? 0)
