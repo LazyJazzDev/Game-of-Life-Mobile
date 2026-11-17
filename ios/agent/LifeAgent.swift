@@ -23,6 +23,12 @@ struct AgentActivity: Identifiable {
   @Published var activities: [AgentActivity] = []
   @Published var startedAt = Date()
   private let key: String
+  private let model: String = {
+    #if targetEnvironment(simulator)
+    if ProcessInfo.processInfo.environment["LONGMARCH_AGENT_MODEL"] == "deepseek-flash" { return "deepseek-flash" }
+    #endif
+    return "deepseek-v4-pro"
+  }()
   @Published var consent = false
   weak var renderer: DemoRenderer?
   private var task: Task<Void, Never>?
@@ -90,7 +96,7 @@ struct AgentActivity: Identifiable {
         #if targetEnvironment(simulator)
           if ProcessInfo.processInfo.environment["LONGMARCH_AGENT_SMOKE"] != nil {
             let file=FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("AgentSmoke.json")
-            let proof:[String:Any] = ["model":"deepseek-v4-pro","tools":toolLog,"messages":messages.map{["role":$0.role,"text":$0.text]}]
+            let proof:[String:Any] = ["model":model,"tools":toolLog,"messages":messages.map{["role":$0.role,"text":$0.text]}]
             try? JSONSerialization.data(withJSONObject:proof,options:.prettyPrinted).write(to:file)
           }
         #endif
@@ -102,7 +108,7 @@ struct AgentActivity: Identifiable {
     #if targetEnvironment(simulator)
     if ProcessInfo.processInfo.environment["LONGMARCH_AGENT_SMOKE"] != nil {
       let file=FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("AgentProgress.json")
-      let proof:[String:Any] = ["model":"deepseek-v4-pro","tools":toolLog,"messages":messages.map{["role":$0.role,"text":$0.text]},"busy":busy]
+      let proof:[String:Any] = ["model":model,"tools":toolLog,"messages":messages.map{["role":$0.role,"text":$0.text]},"busy":busy]
       try? JSONSerialization.data(withJSONObject:proof,options:.prettyPrinted).write(to:file,options:.atomic)
     }
     #endif
@@ -217,7 +223,7 @@ struct AgentActivity: Identifiable {
     }
     let historySize=try JSONSerialization.data(withJSONObject:history).count
     guard historySize <= 2*1024*1024 else { history=[];throw AgentFailure.truncated }
-    request.httpBody=try JSONSerialization.data(withJSONObject:["model":"deepseek-v4-pro","messages":history,"tools":tools,
+    request.httpBody=try JSONSerialization.data(withJSONObject:["model":model,"messages":history,"tools":tools,
       "thinking":["type":"enabled"],"reasoning_effort":reasoningEffort,"max_tokens":32768,"stream":true])
     let (bytes,response)=try await URLSession.shared.bytes(for:request)
     guard let http=response as? HTTPURLResponse, http.statusCode==200 else {
