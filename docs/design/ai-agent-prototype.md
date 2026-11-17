@@ -41,7 +41,20 @@
 - `harmonyos/tests/agent.cjs`：模拟官方请求，检查工具链、reasoning 回传、取消、Key 与上下文隔离、联网同意及 HTTP 错误。
 - `ios/tests/agent_check.cpp` / `gol_agent_check`：Metal 上验证无效参数、幂等编辑、振荡器准确推进与读取、取消重置。
 - 保留现有鸿蒙隐私、自动启动和文件取消测试。
-- 鸿蒙 debug 启动参数 `agentSmoke` 可在画布就绪后执行指定测试任务，并向 filesDir/AgentSmoke.json 输出工具结果与对话记录，不记录 Key。
+- 鸿蒙 debug 启动参数 `agentSmoke` 在成功导入调试密钥后可自动执行指定测试任务；通过设置界面输入密钥时仍须手动发送，避免输入未完成便启动请求。显式使用该参数时，工具结果与对话记录写入 filesDir/AgentSmoke.json，不记录 Key。
 - iOS 模拟器环境变量 `LONGMARCH_AGENT_SMOKE` 提供相同测试入口，输出 Documents/AgentSmoke.json。
 
 测试入口仅用于明确的本地调试启动，不应把这些诊断记录包含在商店素材或正式发布包中。真实设备验收需覆盖对话入口、键盘布局、动态进度、真实 API、工具结果、停止与后台行为。
+
+## Mate 70 验收（2026-11-17）
+
+版本 1.0.3，鸿蒙 versionCode=1000003、buildVersion=95；iOS 版本同步为 1.0.3，build 8。用户确认允许清除数据后卸载原商店包，安装登记设备签名的调试包。
+
+Mate 70 / Maleoon 920 真机通过以下检查：
+
+- 华为隐私确认后进入画布；入口在画布下方，展开原生半透明对话框，键盘出现时可输入。修复尺寸字段未参与 ArkUI 状态更新导致入口初始停在顶部的问题。
+- 使用设置中的密码输入框配置密钥并同意联网后，真实调用 DeepSeek；显示请求轮次与工具操作进度。
+- 查询、暂停、读取空区域、放置 glider、推进四代、再次读回：5 个活格整体平移 (-1,-1)，与 iOS / Metal 测试一致。
+- 请求中点击停止、请求中切入后台均取消轮次；两次测试未新增工具调用。返回前台后对话仍可使用。
+
+本地证据位于 out/agent/mate70-glider-proof.json、mate70-stop-proof.json、mate70-background-proof.json，以及 mate70-chat.png、mate70-progress.png。这些仅为本地调试材料，不纳入商店发布。调试文件导入在本次设备流程中未成功读取，真机验收采用手动密码输入，不能把文件导入列为已通过的检查。

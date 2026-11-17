@@ -136,6 +136,7 @@ class FileOperationError extends Error {
 struct Index {
   @StorageLink('agentForeground') @Watch('agentVisibilityChanged') private agentForeground: boolean = true;
   private agentSmokeStarted: boolean = false;
+  private agentKeyImported: boolean = false;
   private agent: LifeAgent = new LifeAgent();
   @State private agentSettings: boolean = false;
   @State private agentVisible: boolean = false;
@@ -181,8 +182,8 @@ struct Index {
   private request: number = 0;
   private captureStarted: boolean = false;
   private captureWaiting: boolean = false;
-  private areaWidth: number = 1;
-  private areaHeight: number = 1;
+  @State private areaWidth: number = 1;
+  @State private areaHeight: number = 1;
   private lastX: number = 0;
   private lastY: number = 0;
   private distance: number = 0;
@@ -215,6 +216,7 @@ struct Index {
       try {
         const keyFile = `${this.context().filesDir}/deepseek-api.key`;
         this.agentKey = fs.readTextSync(keyFile).trim(); fs.unlinkSync(keyFile);
+        this.agentKeyImported = this.agentKey.length > 0;
       } catch (_) { }
     }
     this.agent.execute = (name: string, args: AgentArgs) => this.agentTool(name, args);
@@ -322,7 +324,7 @@ struct Index {
       if (value.ready === undefined) return;
       this.stats = value;
       const smoke = AppStorage.get<string>('agentSmoke') ?? '';
-      if (value.frames > 2 && smoke.length > 0 && !this.agentSmokeStarted && this.agentKey.length > 0) {
+      if (value.frames > 2 && smoke.length > 0 && !this.agentSmokeStarted && this.agentKeyImported) {
         this.agentSmokeStarted = true; this.agentVisible = true; this.agentConsent = true;
         this.agentInput = smoke; this.agentSend();
       }
@@ -951,6 +953,7 @@ struct Index {
   private agentSend(): void {
     if (!this.agentKey.trim() || !this.agentConsent) return;
     this.agent.key = this.agentKey; this.agent.consent = this.agentConsent;
+    if (this.context().applicationInfo.debug && (AppStorage.get<string>('agentSmoke') ?? '').length > 0) this.agentSmokeStarted = true;
     const input = this.agentInput; this.agentInput = '';
     this.agent.send(input);
   }
