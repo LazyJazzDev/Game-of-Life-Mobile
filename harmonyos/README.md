@@ -402,3 +402,32 @@ Cancellation, request deadlines and per-request memory/context bounds remain.
 A deterministic streaming regression completes 194 responses and 772 tool calls,
 checks that a model brief survives tool execution, and verifies that both brief
 and full response text remain visible in the message history.
+
+Fresh OTCA/glider verification on 2026-11-17: physical Mate 70 build 110 completed
+in 35 tool calls; iPhone 18 Pro simulator (iOS 27.0), build 31, completed in 55.
+Both trials started from uninstall/install with only the same task prompt. No old
+workspace, templates or construction adapter was injected. Both independently
+fetched sources and implemented their own metafier/glife compatibility code.
+Every tool call supplied a concrete brief, retained in the conversation alongside
+ordinary assistant text. The simulator UI was checked expanded and collapsed.
+
+Both produced byte-identical 12298×12298 arrays (36 OTCA metacells, pitch 2048),
+with 1,072,443 cells and template/native-region hash `10639125039446826425`.
+Initial live macro cells are (1,0), (2,1), (0,2), (1,2), (2,2): a southeast glider.
+The phone left the array centered; the simulator used the upper-left world area.
+Both paused and fitted the complete array after placement.
+
+An independent bgolly HashLife run on the downloaded phone template decoded all
+36 central displays after warm-up and 12 macro generations (459,264 ordinary
+Life generations). Every state matches independent B3/S23, ending with the glider
+translated (+3,+3) into the opposite corner. The downloaded simulator RLE has the
+same SHA-256 (`2845c7c37ab5b2374336c1c699df0bf8f4f4a07fc7016fc7b3f222a37b1150b8`),
+so this verification also covers its identical template. The simulator Agent itself
+verified macro generations 0–4 and (+1,+1) displacement. The phone Agent verified
+shorter runs and honestly reported its 60-second script timeout; the independent
+check closes that gap. These long runs use research/independent HashLife, not a
+claim of 459,264 native GPU generations on either device.
+
+Evidence: `out/agent/otca-mate110/` and `out/agent/otca-ios31/`, including traces,
+RLEs, screenshots, `independent-glider.json` and cross-platform byte comparison.
+The iOS simulator remains open at the user's explicit request.
