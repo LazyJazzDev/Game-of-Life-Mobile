@@ -82,8 +82,20 @@ import WebKit
           py.globals.set('_evolve', (cells,n)=>JSON.stringify(life.evolve(cells.toJs ? cells.toJs() : cells,n)));
           py.globals.set('_parse_rle', text=>JSON.stringify(life.parseRLE(text)));
           py.globals.set('_encode_rle', cells=>JSON.stringify(life.encodeRLE(cells.toJs ? cells.toJs() : cells)));
-          py.runPython('import json as _life_json'+String.fromCharCode(10)+'def life_evolve(cells, generations):'+String.fromCharCode(10)+'    return _life_json.loads(_evolve([list(p) for p in cells], generations))');
-          py.runPython('def life_parse_rle(text):'+String.fromCharCode(10)+'    return _life_json.loads(_parse_rle(text))'+String.fromCharCode(10)+'def life_encode_rle(cells):'+String.fromCharCode(10)+'    return _life_json.loads(_encode_rle([list(p) for p in cells]))');
+          py.runPython([
+            'def _make_life_helpers(_e, _p, _c):',
+            '    import json as _json',
+            '    from builtins import list as _list',
+            '    def evolve(cells, generations):',
+            '        return _json.loads(_e([_list(p) for p in cells], generations))',
+            '    def parse(text):',
+            '        return _json.loads(_p(text))',
+            '    def encode(cells):',
+            '        return _json.loads(_c([_list(p) for p in cells]))',
+            '    return evolve, parse, encode',
+            'life_evolve, life_parse_rle, life_encode_rle = _make_life_helpers(_evolve, _parse_rle, _encode_rle)',
+            'del _make_life_helpers'
+          ].join(String.fromCharCode(10)));
           await py.runPythonAsync(e.data.code);
           const value=py.globals.get('result');
           result=value && value.toJs ? value.toJs({dict_converter:Object.fromEntries}) : value;

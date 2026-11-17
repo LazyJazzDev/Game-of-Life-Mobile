@@ -5,6 +5,11 @@ class CellList(list):
         raise RuntimeError("Bridge must not invoke a list subclass's custom indexing")
 
 
+def _collision(*args):
+    raise RuntimeError("User helper must not replace built-in bridge")
+
+
+_evolve = _parse_rle = _encode_rle = _life_json = _collision
 cells = CellList([CellList([0, 0]), CellList([1, 0]),
                   CellList([0, 1]), CellList([1, 1])])
 expected = {(0, 0), (1, 0), (0, 1), (1, 1)}
