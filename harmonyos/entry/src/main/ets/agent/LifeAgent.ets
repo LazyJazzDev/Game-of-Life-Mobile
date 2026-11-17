@@ -30,6 +30,7 @@ export interface AgentLine { role: string; text: string; }
 export interface AgentActivity { title: string; detail: string; started: number; finished: boolean; failed: boolean; }
 export class LifeAgent {
   key: string = '';
+  readonly model: string = 'deepseek-flash';
   systemPrompt: string = '';
   liveResponse: string = '';
   activities: AgentActivity[] = [];
@@ -100,7 +101,7 @@ export class LifeAgent {
     }
     if (JSON.stringify(this.history).length > 2*1024*1024) throw new Error('context_limit');
     const request = http.createHttp(); this.request = request;
-    const body: RequestBody = { model: 'deepseek-flash', messages: this.history, tools: this.tools,
+    const body: RequestBody = { model: this.model, messages: this.history, tools: this.tools,
       thinking: { type: 'enabled' }, reasoning_effort: effort, max_tokens: 32768, stream: true };
     const decoder = new util.TextDecoder('utf-8');
     let buffer = '', content = '', reasoning = '', failure = '';

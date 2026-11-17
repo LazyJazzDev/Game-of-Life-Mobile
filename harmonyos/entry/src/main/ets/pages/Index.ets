@@ -140,6 +140,7 @@ class FileOperationError extends Error {
 struct Index {
   @StorageLink('agentForeground') @Watch('agentVisibilityChanged') private agentForeground: boolean = true;
   private agentSmokeStarted: boolean = false;
+  private agentTraceCount: number = -1;
   private researchTestStarted: boolean = false;
   private agentKeyImported: boolean = false;
   private agent: LifeAgent = new LifeAgent();
@@ -213,9 +214,15 @@ struct Index {
     this.pageAlive = true;
     this.agent.zh = this.context().config.language?.startsWith('zh') ?? true;
     this.agent.changed = () => {
-      if (this.agentSmokeStarted && !this.agent.busy) {
-        const f = fs.openSync(`${this.context().filesDir}/AgentSmoke.json`, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
-        fs.writeSync(f.fd, JSON.stringify({ tools: this.agent.trace, messages: this.agent.lines })); fs.closeSync(f);
+      if (this.agentSmokeStarted && (this.agent.trace.length !== this.agentTraceCount || !this.agent.busy)) {
+        this.agentTraceCount = this.agent.trace.length;
+        const proof = JSON.stringify({ model: this.agent.model, busy: this.agent.busy, tools: this.agent.trace, messages: this.agent.lines });
+        const progressFile = fs.openSync(`${this.context().filesDir}/AgentProgress.json`, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+        fs.writeSync(progressFile.fd, proof); fs.closeSync(progressFile);
+        if (!this.agent.busy) {
+          const f = fs.openSync(`${this.context().filesDir}/AgentSmoke.json`, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+          fs.writeSync(f.fd, proof); fs.closeSync(f);
+        }
       }
       this.agentBusy = this.agent.busy; this.agentProgress = this.agent.progress;
       this.agentLines = this.agent.lines.slice();
