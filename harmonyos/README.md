@@ -512,3 +512,27 @@ Both platforms compile. Mate 70 reports installed version 1.0.3/build 113 after
 an in-place update, and its restored canvas renders normally. This does not
 reproduce the earlier intermittent network failure or claim to identify its
 underlying network cause.
+
+### Visible HashLife playback (build 115 / iOS build 40)
+
+Agent JavaScript `life.evolve` and Python `life_evolve` now produce bounded exact
+HashLife checkpoints even when computation completes immediately, including the
+first generation to avoid sampling only one phase of periodic structures. The
+algorithm still uses power-of-two HashLife jumps, with at most six intermediate
+population readbacks plus input/result snapshots. It never evolves downsampled
+display cells.
+
+The shared research runtime plays queued snapshots every 300 ms through the
+existing native pale-blue live-cell canvas and holds the final frame before
+returning the tool result. It bounds the queue to 12 frames and 8 MiB of RLE text,
+coalesces old queued snapshots during bursts, and cancels playback on Stop or
+worker failure. The native renderer and main-canvas isolation are unchanged.
+
+Validation: `node ios/tests/research_life.cjs`,
+`node ios/tests/research_visual.cjs`, and
+`node ios/tests/research_playback.cjs` cover independent evolution equivalence,
+instantaneous/power-of-two iterations, paced playback, final-frame dwell,
+cancellation and bounded bursts. Both mobile builds compile. On Mate 70 the
+actual Python worker completed a 1024-generation glider test with the expected
+(+256,+256) displacement; captured frames show pale-blue live cells in the main
+renderer. Diagnostic launch parameters are removed after testing.

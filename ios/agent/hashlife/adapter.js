@@ -69,7 +69,10 @@ const life = {
       xs[i]=p[0];ys[i]=p[1];
     });
     const universe=new LifeUniverse();universe.setup_field(xs,ys);
-    const total=generations;let previewTime=Date.now(),previewCount=0;
+    const total=generations;let previewCount=0;
+    // Sample real states even when one HashLife jump finishes instantly. Keep
+    // power-of-two jumps and a bounded number of costly population readbacks.
+    const previewStep=life.preview ? Math.max(0,Math.floor(Math.log2(Math.max(1,total)))-2) : Infinity;
     life.preview?.(cells,0,'input');
     const collect=()=>{
       if(universe.root.population>4194304)throw Error('Evolution result exceeds population limit');
@@ -84,11 +87,13 @@ const life = {
       return result;
     };
     while(generations>0) {
-      const exponent=Math.floor(Math.log2(generations));
+      // Include generation 1 so periodic structures do not appear frozen
+      // merely because every later checkpoint is a multiple of their period.
+      const exponent=life.preview && generations===total ? 0 : Math.min(previewStep,Math.floor(Math.log2(generations)));
       universe.set_step(exponent);universe.next_generation(true);
       generations-=2**exponent;
-      if(life.preview&&generations>0&&previewCount<6&&Date.now()-previewTime>300) {
-        life.preview(collect(),total-generations,'evolving');previewTime=Date.now();previewCount++;
+      if(life.preview&&generations>0&&previewCount<6) {
+        life.preview(collect(),total-generations,'evolving');previewCount++;
       }
     }
     const result=collect();

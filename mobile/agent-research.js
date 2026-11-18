@@ -8,7 +8,7 @@ return await new Promise((resolve,reject)=>{
   let previewAt=0;
   if(typeof agentPreviewFrame==='function') {
     const encode=life.encodeRLE.bind(life);
-    const emit=(cells,generation,phase)=>{const now=Date.now();if(phase!=='result'&&now-previewAt<180)return;previewAt=now;
+    const emit=(cells,generation,phase)=>{const now=Date.now();if(phase==='structure'&&now-previewAt<180)return;previewAt=now;
       const frame=agentPreviewFrame(cells,generation,phase,encode);if(frame)self.postMessage({preview:frame});};
     life.preview=emit;
     for(const name of ['parseRLE','encodeRLE']) {const original=life[name];life[name]=function(value){const result=original.call(life,value);emit(name==='parseRLE'?result:value,0,'structure');return result;};}
@@ -50,16 +50,42 @@ return await new Promise((resolve,reject)=>{
   } catch(err){self.postMessage({ok:false,error:String(err),stack:err.stack});}}`;
   const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
   const worker=new Worker(url);
-  const stop=()=>{worker.terminate();URL.revokeObjectURL(url);globalThis.agentResearchRuns.delete(cancel);};
-  let output='';
-  const finish=value=>{clearTimeout(timer);stop();resolve({...value,output});};
+  const stop=()=>{worker.terminate();URL.revokeObjectURL(url);};
+  let output='',settled=false,result=null,playbackTimer=null;
+  const frames=[];let queuedBytes=0;
+  const finish=value=>{
+    if(settled)return;settled=true;clearTimeout(timer);clearTimeout(playbackTimer);
+    frames.length=0;stop();globalThis.agentResearchRuns.delete(cancel);resolve({...value,output});
+  };
   const cancel=()=>finish({ok:false,error:'cancelled'});
   globalThis.agentResearchRuns.add(cancel);
   const timer=setTimeout(()=>finish({ok:false,error:'execution_timeout'}),60000);
+  // The worker may finish in milliseconds. Drain exact snapshots at a visible
+  // cadence before returning its result, so the next tool cannot erase them.
+  const play=()=>{
+    playbackTimer=null;
+    if(settled)return;
+    if(frames.length){
+      const frame=frames.shift();queuedBytes-=frame.rle.length;
+      try{onPreview?.(frame);}catch(_){}
+      playbackTimer=setTimeout(play,300);
+    }else if(result)finish(result);
+  };
   worker.onmessage=e=>{
-    if(e.data.preview){try{onPreview?.(e.data.preview);}catch(_){}return;}
+    if(settled)return;
+    if(e.data.preview){
+      const frame=e.data.preview;
+      frames.push(frame);queuedBytes+=frame.rle.length;
+      // Coalesce older queued work, but retain the newest exact state. Bound
+      // retained RLE strings as well as frame count for large research scenes.
+      while(frames.length>12 || (queuedBytes>8*1024*1024 && frames.length>1))queuedBytes-=frames.shift().rle.length;
+      if(playbackTimer===null)play();
+      return;
+    }
     if(typeof e.data.log==='string'){output=(output+e.data.log+String.fromCharCode(10)).slice(-16000);return;}
-    finish(e.data);
+    clearTimeout(timer);stop();result=e.data;
+    if(!result.ok){finish(result);return;}
+    if(playbackTimer===null)play();
   };
   worker.onerror=e=>finish({ok:false,error:e.message});
   worker.postMessage({code,documents,language});
