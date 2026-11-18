@@ -447,3 +447,31 @@ claim of 459,264 native GPU generations on either device.
 Evidence: `out/agent/otca-mate110/` and `out/agent/otca-ios31/`, including traces,
 RLEs, screenshots, `independent-glider.json` and cross-platform byte comparison.
 The iOS simulator remains open at the user's explicit request.
+
+### Agent confirmation, library and automatic saving (build 112 / iOS build 37)
+
+Destructive canvas tools now keep their native reply pending until the user accepts
+or declines the existing confirmation dialog. The same Agent run then receives the
+actual result and continues. HarmonyOS excludes this human wait from its ordinary
+10-second native-tool deadline; cancellation still terminates the wait.
+
+Opening the conversation scrolls to the latest message. `pattern_search`,
+`pattern_get` and `pattern_import` expose the existing bundled pattern catalog;
+the shared prompt tells the Agent to search locally before researching missing
+material online. Imported patterns become ordinary reusable templates.
+
+`canvas_save` stores the current canvas in the user's My Patterns library using a
+model-selected name. It rejects duplicate names and invalid filenames without
+overwriting. After placement or editing, `task_complete` requires a successful
+save; the Agent chooses another name and retries on collision. Evolution after a
+save does not invalidate the saved initial design.
+
+Verification: `node harmonyos/tests/agent.cjs`,
+`node harmonyos/tests/agent_native.cjs`, and the native `gol_agent_check` cover
+continuation, rejection/cancellation, long human waits, required saving, renaming,
+Unicode filenames, collision protection and saved-canvas reload. A fresh iOS build
+37 installation additionally completed a real reset-confirmation → bundled blinker
+import → placement → self-named save → two-generation verification workflow, with
+no web research. Reopening the chat after scrolling upward returned to its latest
+message. HarmonyOS build 112 compiles; physical-device UI verification remains
+pending device connection.

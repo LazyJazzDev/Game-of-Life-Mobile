@@ -18,6 +18,10 @@ class DesktopGameSession {
     agent_templates_.SetBuiltinDirectory(path);
   }
 
+  void SetAgentPatternDirectory(const std::filesystem::path &path) {
+    agent_patterns_ = path;
+  }
+
   void Render();
   bool WaitGPU();
   grassland::rhi::IQueue *Queue() const;
@@ -46,5 +50,6 @@ class DesktopGameSession {
 
  private:
   mobile_agent::TemplateStore agent_templates_;
+  std::filesystem::path agent_patterns_;
   std::unique_ptr<life_demo::GameOfLife> life_;
 };

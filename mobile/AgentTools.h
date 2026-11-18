@@ -13,7 +13,8 @@ namespace mobile_agent {
 inline std::string Execute(life_demo::GameOfLife &game,
                            const std::string &input,
                            TemplateStore *templates = nullptr,
-                           bool allow_preset_guides = true) {
+                           bool allow_preset_guides = true,
+                           const std::filesystem::path &patterns_directory = {}) {
   rapidjson::Document d;
   if (input.size() > 20 * 1024 * 1024)
     return R"({"ok":false,"error":"request_too_large"})";
@@ -27,6 +28,40 @@ inline std::string Execute(life_demo::GameOfLife &game,
     return std::isfinite(v);
   };
   std::string action = d["action"].GetString();
+  if (action == "canvas_save") {
+    if (!d.HasMember("name") || !d["name"].IsString() || patterns_directory.empty())
+      return R"({"ok":false,"error":"invalid_name_or_storage_unavailable"})";
+    const std::string name = d["name"].GetString();
+    if (name.empty() || name.size() > 180 || name == "." || name == ".." || name.front() == ' ' || name.back() == ' ' ||
+        std::any_of(name.begin(), name.end(), [](unsigned char c) {
+          return c < 32 || c == 127 || std::string("/\\:*?\"<>|").find(char(c)) != std::string::npos;
+        }))
+      return R"({"ok":false,"error":"invalid_name","retry":"Choose another layout name without path or reserved characters"})";
+    if (game.ConfirmationRequest() || game.HostedFileRequest())
+      return R"({"ok":false,"error":"canvas_busy"})";
+    std::error_code ec;
+    std::filesystem::create_directories(patterns_directory, ec);
+    if (ec)
+      return R"({"ok":false,"error":"storage_unavailable"})";
+    const auto path = patterns_directory / std::filesystem::u8path(name + ".cells");
+    if (std::filesystem::exists(path, ec))
+      return R"({"ok":false,"error":"name_exists","retry":"Choose a different name and call canvas_save again; never overwrite"})";
+    if (ec || !game.SaveSession(path.string()).empty())
+      return R"({"ok":false,"error":"save_failed"})";
+    rapidjson::StringBuffer output;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(output);
+    writer.StartObject();
+    writer.Key("ok");
+    writer.Bool(true);
+    writer.Key("saved");
+    writer.Bool(true);
+    writer.Key("name");
+    writer.String(name.c_str());
+    writer.Key("location");
+    writer.String("My Patterns");
+    writer.EndObject();
+    return output.GetString();
+  }
   // Presentation-only commands are issued by the app, never advertised as model tools.
   if (action == "preview_end") {
     game.EndAgentPreview();

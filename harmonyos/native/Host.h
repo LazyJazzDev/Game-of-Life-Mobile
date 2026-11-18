@@ -45,6 +45,7 @@ class Host {
   bool quit_ = false;
   std::string status_ = "{}";
   std::string agent_reply_;
+  int agent_confirmation_id_{};
   int agent_id_ = 0;
   std::unique_ptr<DesktopGameSession> game_;
   std::unique_ptr<Surface> surface_;

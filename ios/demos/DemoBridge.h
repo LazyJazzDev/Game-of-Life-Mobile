@@ -17,6 +17,7 @@ typedef void (^DemoProgress)(double frameSeconds,
          progress:(DemoProgress)progress NS_SWIFT_NAME(start(view:resources:progress:));
 @property(nonatomic, copy, nullable) void (^confirmationRequest)(NSInteger action);
 - (void)completeConfirmation:(BOOL)accepted;
+- (void)cancelAgentConfirmation;
 @property(nonatomic, copy, nullable) void (^fileRequest)(NSInteger action);
 // bounds is the tapped slider as fractions of the view.
 @property(nonatomic, copy, nullable) void (^sizeRequest)(NSInteger axis, NSInteger value, CGRect bounds);

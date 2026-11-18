@@ -1,5 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+let suiteFinished=false;
+process.on('beforeExit',()=>assert.ok(suiteFinished,'test stopped with an unresolved async step'));
 const vm = require('node:vm');
 const ts = require('/Applications/DevEco-Studio.app/Contents/tools/hvigor/hvigor-ohos-plugin/node_modules/typescript');
 const source = fs.readFileSync('harmonyos/entry/src/main/ets/agent/LifeAgent.ets', 'utf8');
@@ -12,6 +14,7 @@ const http = { RequestMethod: { POST:'POST' }, createHttp() {
     const requestBody=JSON.parse(options.extraData);
     assert.equal(requestBody.store,false);assert.equal(requestBody.parallel_tool_calls,false);
     assert.ok(!('thinking' in requestBody));assert.ok(!('messages' in requestBody));
+    assert.ok(requests.length < 1200, "fixture exhausted: unexpected nonterminating tool loop");
     requests.push(requestBody);
     const response = await respond();
     const bytes = Buffer.from(response.body);
@@ -125,7 +128,8 @@ function reply(message, finish = 'stop', terminate = true) {
   };
   respond=async()=>reply({tool_calls:['edit1','edit2'].map(id=>({id,function:{name:'canvas_edit',arguments:'{}'}}))},'tool_calls');
   const interrupted=resumed.send('Apply the next two edits');await started;resumed.cancel();release('{"ok":true}');await interrupted;
-  respond=async()=>reply({content:'Inspect before resuming'});
+  round=0; resumed.execute=async(name)=>{assert.equal(name,'canvas_save');return '{"ok":true,"saved":true}';};
+  respond=async()=>++round===1 ? reply({tool_calls:[{id:'save-resumed',function:{name:'canvas_save',arguments:'{"name":"Resumed design"}'}}]}) : reply({content:'Inspect before resuming'});
   await resumed.send('继续');sent=requests.at(-1).input;
   assert.ok(sent.some(m=>m.type==='message' && m.phase==='commentary'),'assistant phase must survive replay');
   assert.equal(actionCount,2,'resuming must not replay interrupted actions automatically');
@@ -134,7 +138,38 @@ function reply(message, finish = 'stop', terminate = true) {
   assert.ok(sent.some(m=>m.content?.includes('may already have taken effect')));
   assert.ok(!sent.some(m=>m.type==='function_call' && ['edit1','edit2'].includes(m.call_id)));
   assert.ok(!sent.some(m=>['edit1','edit2'].includes(m.call_id)));
+  // Confirmation stays inside the same tool loop. Completion cannot bypass a
+  // saved layout, and a name collision goes back to the model for renaming.
+  const workflow = new exportsObject.LifeAgent(); workflow.key='test'; workflow.consent=true; workflow.systemPrompt='Workflow test';
+  let confirm, ready; const waitingConfirmation=new Promise(resolve=>{ready=resolve;});
+  const savedNames=[];let saveAttempts=0;round=0;requests=[];
+  workflow.execute=async(name,args)=>{
+    if(name==='canvas_control') {ready();return new Promise(resolve=>{confirm=resolve;});}
+    if(name==='canvas_save') {savedNames.push(args.name);return ++saveAttempts===1 ? '{"ok":false,"error":"name_exists"}' : '{"ok":true,"saved":true}';}
+    assert.equal(name,'canvas_edit');return '{"ok":true}';
+  };
+  const call=(name,args)=>reply({tool_calls:[{id:'workflow-'+round,function:{name,arguments:JSON.stringify(args)}}]});
+  respond=async()=>{
+    ++round;assert.ok(round<=6);
+    if(round===1)return call('canvas_control',{action:'reset'});
+    if(round===2)return call('canvas_edit',{cells:[[0,0,1]]});
+    if(round===3||round===6)return call('task_complete',{summary:'Saved design',evidence:['verified']});
+    return call('canvas_save',{name:round===4?'My design':'My design revised'});
+  };
+  const workflowTask=workflow.send('Design a pattern');await waitingConfirmation;
+  assert.equal(requests.length,1);assert.equal(workflow.busy,true);
+  confirm('{"ok":true,"confirmed":true,"applied":true}');await workflowTask;
+  assert.equal(round,6);assert.deepEqual(savedNames,['My design','My design revised']);
+  assert.ok(workflow.trace.some(t=>JSON.parse(t.result).error==='layout_save_required'));
+  assert.equal(workflow.lines.at(-1).text,'Saved design');
+  // Declining also resumes automatically and preserves the negative result.
+  round=0;requests=[];workflow.execute=async()=>'{"ok":false,"applied":false,"error":"user_declined"}';
+  respond=async()=>++round===1 ? call('canvas_control',{action:'randomize'}) : reply({content:'Kept the canvas'});
+  await workflow.send('Try another layout');assert.equal(round,2);
+  assert.ok(requests[1].input.some(i=>i.type==='function_call_output'&&i.output.includes('user_declined')));
+  console.log('PASS confirmation continuation, declined action, mandatory save and model-selected rename');
   a.consent=false;const before=requests.length;await a.send('no consent');assert.equal(requests.length,before);assert.ok(destroyed>0);
   assert.ok(requests[0].model==='gpt-6-astra');
+  suiteFinished=true;
   console.log('PASS Responses SSE UTF-8/tool fragments, encrypted reasoning replay, completion recovery, cancellation, retained context, consent and HTTP errors');
 })().catch(e=>{console.error(e);process.exit(1);});

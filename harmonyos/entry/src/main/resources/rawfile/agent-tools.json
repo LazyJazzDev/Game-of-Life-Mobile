@@ -734,5 +734,111 @@
         "additionalProperties": false
       }
     }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pattern_search",
+      "description": "Search the bundled Life Lexicon pattern library offline first. Query matches English name, category or speed; empty query browses. Returns up to 50 metadata entries; use offset to page. Search online only for material absent here.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence describing your current concrete work in the user language."
+          }
+        },
+        "required": [
+          "query",
+          "work_brief"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pattern_get",
+      "description": "Read the exact RLE of a built-in pattern offline, using a name returned by pattern_search.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence describing your current concrete work in the user language."
+          }
+        },
+        "required": [
+          "name",
+          "work_brief"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "pattern_import",
+      "description": "Import a built-in library pattern into a reusable Agent template without network access. Does not modify the canvas. Choose an unused ASCII template_name; then template_place/compose can use it.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "template_name": {
+            "type": "string"
+          },
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence describing your current concrete work in the user language."
+          }
+        },
+        "required": [
+          "name",
+          "template_name",
+          "work_brief"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "canvas_save",
+      "description": "Save the current complete canvas to the user My Patterns library. Required when a layout design is complete. Choose a descriptive name yourself (Unicode allowed, no path/reserved characters). On name_exists choose a different name and retry; never overwrite. Save initial functional designs before evolution tests when appropriate.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "work_brief": {
+            "type": "string",
+            "description": "One short sentence describing your current concrete work in the user language."
+          }
+        },
+        "required": [
+          "name",
+          "work_brief"
+        ],
+        "additionalProperties": false
+      }
+    }
   }
 ]

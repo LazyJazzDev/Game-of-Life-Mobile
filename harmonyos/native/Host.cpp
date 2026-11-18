@@ -208,9 +208,23 @@ void Host::Execute(const std::string &json) {
     throw std::runtime_error("Invalid native command");
   const auto type = Text(c, "type");
   if (type == "agent") {
-    agent_id_ = int(Number(c, "request"));
-    agent_reply_ = game_ ? game_->AgentCommand(Text(c, "payload")) : R"({"ok":false,"error":"canvas_not_ready"})";
+    const int request = int(Number(c, "request"));
+    const auto reply = game_ ? game_->AgentCommand(Text(c, "payload")) : R"({"ok":false,"error":"canvas_not_ready"})";
+    if (reply.find("awaiting_user_confirmation") != std::string::npos) {
+      agent_confirmation_id_ = request;
+    } else {
+      agent_id_ = request;
+      agent_reply_ = reply;
+    }
     dirty_ = true;
+  } else if (type == "agentCancel") {
+    if (game_ && agent_confirmation_id_) {
+      game_->CompleteConfirmation(false);
+      agent_id_ = agent_confirmation_id_;
+      agent_confirmation_id_ = 0;
+      agent_reply_ = R"({"ok":false,"applied":false,"error":"cancelled"})";
+      dirty_ = true;
+    }
   } else if (type == "active") {
     active_ = Boolean(c, "value");
     last_present_ = {};
@@ -232,6 +246,7 @@ void Host::Execute(const std::string &json) {
     game_ = std::make_unique<DesktopGameSession>(grassland::rhi::BACKEND_API_VULKAN);
     // Agent templates are user-authored; no bundled construction library.
     game_->EnableNativeSizeControls();
+    game_->SetAgentPatternDirectory(session_path_.parent_path() / "patterns");
     transient_session_ = Boolean(c, "value");
     if (!transient_session_) {
       const auto error = game_->RestoreSession(session_path_.string());
@@ -241,7 +256,14 @@ void Host::Execute(const std::string &json) {
     Resize();
     dirty_ = true;
   } else if (type == "confirm" && game_) {
-    game_->CompleteConfirmation(Boolean(c, "value"));
+    const bool accepted = Boolean(c, "value");
+    game_->CompleteConfirmation(accepted);
+    if (agent_confirmation_id_) {
+      agent_id_ = agent_confirmation_id_;
+      agent_confirmation_id_ = 0;
+      agent_reply_ = accepted ? R"({"ok":true,"applied":true,"confirmed":true})"
+                              : R"({"ok":false,"applied":false,"error":"user_declined"})";
+    }
     dirty_ = true;
   } else if (type == "size" && game_) {
     size_value_ = int(std::clamp(Number(c, "value", 64), 2.0, 256.0));

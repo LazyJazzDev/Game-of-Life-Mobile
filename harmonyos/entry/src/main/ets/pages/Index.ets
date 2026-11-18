@@ -10,6 +10,7 @@ import { HostedPrivacy } from '../privacy/HostedPrivacy';
 interface NativeTemplateResult { ok: boolean; error?: string; }
 interface PatternFile { name: string; modified: number; }
 // A named pattern from the built-in Life Lexicon library (demo/gol/patterns/library.json).
+interface AgentPatternMatch { name: string; category: string; width: number; height: number; }
 interface BuiltinPattern {
   name: string; category: string; width: number; height: number; period?: number; speed?: string; rle: string;
 }
@@ -245,10 +246,11 @@ struct Index {
       this.agentActivities = this.agent.activities.slice();
       const last = this.agentActivities[this.agentActivities.length-1];
       this.agentElapsed = last ? Math.floor((Date.now()-last.started)/1000) : 0;
-      if (messageChanged) this.agentScroller.scrollEdge(Edge.Bottom);
+      if (messageChanged && this.agentVisible) setTimeout((): void => { this.agentScroller.scrollEdge(Edge.Bottom); }, 0);
     };
     this.research.visualChanged = (value: string) => this.queueAgentPreview(value);
     this.agent.cancelResearch = () => {
+      this.send({ type: 'agentCancel' });
       this.send({ type: 'agent', request: ++this.agentSequence, payload: '{"action":"view_stop","value":0}' });
       this.endAgentPreview(); this.research.cancel();
     };
@@ -990,6 +992,7 @@ struct Index {
       await new Promise<void>((resolve: () => void) => { setTimeout(resolve, 50); });
       if (run !== this.agentVisualRun) return '{"ok":false,"error":"cancelled"}';
       const status = JSON.parse(native.status()) as NativeStatus;
+      if (status.confirmationRequest !== 0) count = 0; // Wait for the person, not a tool timeout.
       if (status.agentId === id) {
         if (this.agent.busy && (args.action === 'template_save' || args.action === 'template_compose' || args.action === 'template_info')) {
           const result = JSON.parse(status.agentReply) as NativeTemplateResult;
@@ -1043,6 +1046,20 @@ struct Index {
 
   private async runAgentTool(name: string, args: AgentArgs, run: number): Promise<string> {
     if (!this.agentConsent || !this.privacyAgreed || !this.agent.busy) return '{"ok":false}';
+    if (name === 'pattern_search') {
+      const query = (args.query ?? '').toLowerCase();
+      const matches = this.loadBuiltins().filter((p: BuiltinPattern) => !query.length || `${p.name} ${p.category} ${p.speed ?? ''}`.toLowerCase().includes(query));
+      const offset = Math.max(0, Math.floor(args.offset ?? 0));
+      return JSON.stringify({ok: true, source: 'builtin', total: matches.length, offset: offset,
+        patterns: matches.slice(offset, offset+50).map((p: BuiltinPattern): AgentPatternMatch => ({name: p.name, category: p.category, width: p.width, height: p.height}))});
+    }
+    if (name === 'pattern_get' || name === 'pattern_import') {
+      const pattern = this.loadBuiltins().find((p: BuiltinPattern) => p.name.toLowerCase() === (args.name ?? '').toLowerCase());
+      if (!pattern) return '{"ok":false,"error":"pattern_not_found"}';
+      const rle = `x = ${pattern.width}, y = ${pattern.height}, rule = B3/S23\n${pattern.rle}`;
+      if (name === 'pattern_import') return this.agentNative({action: 'template_save', name: args.template_name, rle: rle});
+      return JSON.stringify({ok: true, source: 'builtin', name: pattern.name, category: pattern.category, rle: rle});
+    }
     if (name === 'knowledge_sources') return this.agentRaw('knowledge-sources.json');
     if (name === 'research_fetch') return this.research.fetch(args.url ?? '');
     if (name === 'research_search') return this.research.search(args.query ?? '');
@@ -1075,6 +1092,7 @@ struct Index {
       return response.length > 48000 ? '{"ok":false,"error":"script_result_too_large"}' : response;
     }
     if (name === 'template_save' || name === 'template_list' || name === 'template_info' || name === 'template_compose' || name === 'template_place') { args.action = name; return this.agentNative(args); }
+    if (name === 'canvas_save') { args.action = name; const result = await this.agentNative(args); this.refreshPatterns(); return result; }
     if (name === 'canvas_fit') { args.action = 'fit'; return this.agentNative(args); }
     if (name === 'canvas_summary') { args.action = 'summary'; return this.agentNative(args); }
     if (name === 'canvas_state') return this.agentNative({ action: 'state' });
@@ -1122,6 +1140,7 @@ struct Index {
               if (this.agentLive.length > 0) { Text(this.agentLive).fontSize(16).fontColor(LABEL).width('100%') }
             }.width('100%').alignItems(HorizontalAlign.Start)
           }.height(this.areaHeight > 500 ? 230 : 100).width('100%')
+            .onAppear(() => { setTimeout((): void => { this.agentScroller.scrollEdge(Edge.Bottom); }, 0); })
           Row({ space: 8 }) {
             TextInput({ placeholder: this.agent.text('描述你想探索的结构…', 'Describe your idea…'), text: this.agentInput })
               .id('agent-message-input').layoutWeight(1).onChange((value: string) => { this.agentInput = value; }).onSubmit(() => this.agentSend())

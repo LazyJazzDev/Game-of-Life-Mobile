@@ -65,6 +65,22 @@ int main(int argc, char **argv) {
   session.Render();
   if (run(R"({"action":"read","x":1000,"y":1000,"width":3,"height":3})") != result)
     return 49;
+  session.Game()->SetAgentPatternDirectory(preview_dir / "Patterns");
+  run(R"({"action":"canvas_save","name":"测试布局"})");
+  const auto saved_path = preview_dir / "Patterns" / "测试布局.cells";
+  const auto saved_bytes = bytes(saved_path);
+  if (saved_bytes.empty())
+    return 50;
+  run(R"({"action":"edit","cells":[[1000,1000,1]]})");
+  const auto collision = run(R"({"action":"canvas_save","name":"测试布局"})", false);
+  if (collision.find("name_exists") == std::string::npos || bytes(saved_path) != saved_bytes)
+    return 51;
+  run(R"({"action":"canvas_save","name":"../outside"})", false);
+  run(R"({"action":"canvas_save","name":"测试布局二"})");
+  if (!session.Game()->RestoreSession(saved_path.string()).empty() ||
+      run(R"({"action":"read","x":1000,"y":1000,"width":3,"height":3})") != result)
+    return 52;
+  std::cout << "PASS user-library save, Unicode names, collision protection, path rejection and reload\n";
   std::filesystem::remove_all(preview_dir);
   std::cout << "PASS native research buffer isolation, main-canvas save during preview, and restoration\n";
   run(R"({"action":"view_stop","value":0})");

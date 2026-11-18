@@ -18,6 +18,7 @@
   std::atomic<uint64_t> _generation;
   BOOL _active, _busy, _failed, _filePending, _confirmationPending;
   std::string _sessionPath;
+  void (^_agentConfirmationCompletion)(NSString *);
   id _resignObserver;
   CFTimeInterval _statsTime;
   NSInteger _statsFrames;
@@ -37,9 +38,13 @@
   dispatch_async(LongMarchRenderQueue(), ^{
     std::string result = _session ? _session->AgentCommand(command) : R"({"ok":false,"error":"canvas_not_ready"})";
     NSString *reply = [NSString stringWithUTF8String:result.c_str()];
+    const bool awaiting = result.find("awaiting_user_confirmation") != std::string::npos;
     dispatch_async(dispatch_get_main_queue(), ^{
+      if (awaiting)
+        self->_agentConfirmationCompletion = [completion copy];
       [self wakeGame];
-      completion(reply);
+      if (!awaiting)
+        completion(reply);
     });
   });
 }
@@ -93,6 +98,10 @@
       try {
         self->_session = std::make_unique<DemoSession>(resources.fileSystemRepresentation);
         self->_session->Game()->EnableNativeSizeControls();
+        NSURL *patterns = [[[NSFileManager defaultManager]
+                               URLsForDirectory:NSDocumentDirectory
+                                      inDomains:NSUserDomainMask].firstObject URLByAppendingPathComponent:@"Patterns"];
+        self->_session->Game()->SetAgentPatternDirectory(patterns.fileSystemRepresentation);
         self->_sessionPath.clear();
         NSDictionary *environment = NSProcessInfo.processInfo.environment;
         if (!environment[@"LONGMARCH_CAPTURE_PATTERN"] && !environment[@"LONGMARCH_SMOKE_GOL_SIZE"]) {
@@ -311,9 +320,20 @@
       self->_session->Game()->CompleteConfirmation(accepted);
     dispatch_async(dispatch_get_main_queue(), ^{
       self->_confirmationPending = NO;
+      if (self->_agentConfirmationCompletion) {
+        auto completion = self->_agentConfirmationCompletion;
+        self->_agentConfirmationCompletion = nil;
+        completion(accepted ? @"{\"ok\":true,\"applied\":true,\"confirmed\":true}"
+                            : @"{\"ok\":false,\"applied\":false,\"error\":\"user_declined\"}");
+      }
       [self wakeGame];
     });
   });
+}
+
+- (void)cancelAgentConfirmation {
+  if (_agentConfirmationCompletion)
+    [self completeConfirmation:NO];
 }
 
 - (void)checkpointCanvas {

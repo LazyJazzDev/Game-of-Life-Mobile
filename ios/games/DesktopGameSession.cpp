@@ -134,5 +134,5 @@ std::string DesktopGameSession::RestoreSession(const std::string &path) {
 }
 
 std::string DesktopGameSession::AgentCommand(const std::string &json) {
-  return mobile_agent::Execute(*life_, json, &agent_templates_, false);
+  return mobile_agent::Execute(*life_, json, &agent_templates_, false, agent_patterns_);
 }

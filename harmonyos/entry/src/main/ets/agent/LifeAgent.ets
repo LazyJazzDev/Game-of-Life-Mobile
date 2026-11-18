@@ -6,6 +6,7 @@ export interface AgentArgs {
   work_brief?: string;
   summary?: string; evidence?: string[]; question?: string; reason?: string;
   url?: string; document?: string; offset?: number; length?: number; content?: string; code?: string; language?: string;
+  template_name?: string;
   rle?: string; parts?: TemplatePart[]; mode?: string;
   action?: string; value?: number; x?: number; y?: number;
   width?: number; height?: number; cells?: number[][]; query?: string; name?: string;
@@ -39,6 +40,7 @@ export interface AgentLine { role: string; text: string; }
 
 export interface AgentActivity { title: string; detail: string; started: number; finished: boolean; failed: boolean; }
 export class LifeAgent {
+  private layoutNeedsSave: boolean = false;
   key: string = '';
   readonly model: string = 'gpt-6-astra';
   systemPrompt: string = '';
@@ -274,8 +276,12 @@ export class LifeAgent {
             this.activity(this.toolProgress(call.function.name, args));
             if (call.function.name === 'task_complete') {
               if (!args.summary?.trim() || !Array.isArray(args.evidence) || !args.evidence.length || args.evidence.some(item => typeof item !== 'string' || !item.trim())) throw new Error('invalid_completion');
-              this.lines.push({role: 'assistant', text: args.summary}); finished = true;
-              value = '{"ok":true,"completed":true}';
+              if (this.layoutNeedsSave) {
+                value = '{"ok":false,"error":"layout_save_required","next_action":"Choose a layout name and call canvas_save. If name_exists, rename and retry. Then call task_complete."}';
+              } else {
+                this.lines.push({role: 'assistant', text: args.summary}); finished = true;
+                value = '{"ok":true,"completed":true}';
+              }
             } else if (call.function.name === 'task_wait') {
               if (!args.question?.trim() || !['missing_user_information', 'destructive_confirmation'].includes(args.reason ?? '')) throw new Error('invalid_wait');
               this.lines.push({role: 'assistant', text: args.question}); finished = true; waiting = true;
@@ -286,6 +292,12 @@ export class LifeAgent {
           this.trace.push({name: call.function.name, arguments: call.function.arguments, result: value});
           this.history.push({role: 'tool', tool_call_id: call.id, content: value});
           const result = JSON.parse(value) as ToolResult;
+          if (result.ok === true) {
+            const args = JSON.parse(call.function.arguments) as AgentArgs;
+            if (['canvas_edit', 'template_place'].includes(call.function.name)) this.layoutNeedsSave = true;
+            if (call.function.name === 'canvas_save') this.layoutNeedsSave = false;
+            if (call.function.name === 'canvas_control' && ['reset', 'randomize'].includes(args.action ?? '')) this.layoutNeedsSave = false;
+          }
           this.finishActivity(result.ok === false ? (result.error ?? 'tool_failed') : '');
           if (finished) return;
         }
