@@ -473,5 +473,7 @@ Unicode filenames, collision protection and saved-canvas reload. A fresh iOS bui
 37 installation additionally completed a real reset-confirmation → bundled blinker
 import → placement → self-named save → two-generation verification workflow, with
 no web research. Reopening the chat after scrolling upward returned to its latest
-message. HarmonyOS build 112 compiles; physical-device UI verification remains
-pending device connection.
+message. HarmonyOS build 112 was installed over the existing app on Mate 70; package
+metadata confirms version 1.0.3/build 112, and a device screenshot confirms normal
+startup and the restored canvas. Its Agent loop and native polling bridge passed
+the automated tests above; the full interactive Agent trial was run on iOS.
