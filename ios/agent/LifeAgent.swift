@@ -123,7 +123,8 @@ struct AgentActivity: Identifiable {
     recoverHistory()
     messages.append(AgentMessage(role:"user",text:input));busy=true;outcome=""
     taskFinished=false;waitingForUser=false
-    liveResponse="";activities=[];startedAt=Date();progress=text("等待 Agent 的工作简报…","Waiting for the Agent’s work brief…")
+    liveResponse="";activities=[];startedAt=Date();progress=text("已收到你的任务，正在连接 Agent…","Task received. Connecting to the Agent…")
+    messages.append(AgentMessage(role:"assistant",text:progress))
     generation += 1
     let current=generation
     saveTrace()
@@ -284,7 +285,20 @@ struct AgentActivity: Identifiable {
 
   private func completion(_ tools:Any, reasoningEffort:String) async throws -> [String:Any] {
     var request=URLRequest(url:URL(string:"https://api.openai.com/v1/responses")!)
-    request.httpMethod="POST";request.timeoutInterval=120
+    request.httpMethod="POST"
+    // No practical reasoning deadline; connection setup is guarded separately.
+    let configuration=URLSessionConfiguration.ephemeral
+    configuration.timeoutIntervalForRequest=TimeInterval(Int32.max)
+    configuration.timeoutIntervalForResource=TimeInterval(Int32.max)
+    request.timeoutInterval=TimeInterval(Int32.max)
+    let session=URLSession(configuration:configuration)
+    var connected=false,accepted=false,connectionExpired=false
+    let connectionWatch=Task { @MainActor in
+      do { try await Task.sleep(for:.seconds(30)) } catch { return }
+      if !connected { connectionExpired=true;session.invalidateAndCancel() }
+    }
+    defer { connectionWatch.cancel();session.invalidateAndCancel() }
+    progress=text("正在连接 Agent 服务…","Connecting to the Agent service…")
     request.setValue("Bearer \(key)",forHTTPHeaderField:"Authorization")
     request.setValue("application/json",forHTTPHeaderField:"Content-Type")
     if try JSONSerialization.data(withJSONObject:history).count > 384*1024 {
@@ -305,7 +319,10 @@ struct AgentActivity: Identifiable {
     request.httpBody=try JSONSerialization.data(withJSONObject:["model":model,"input":input,"tools":functions,
       "reasoning":["effort":reasoningEffort],"max_output_tokens":32768,"stream":true,
       "store":false,"include":["reasoning.encrypted_content"],"parallel_tool_calls":false])
-    let (bytes,response)=try await URLSession.shared.bytes(for:request)
+    do {
+    let (bytes,response)=try await session.bytes(for:request)
+    connected=true;connectionWatch.cancel()
+    progress=text("已连接，等待服务端接收任务…","Connected; waiting for the server to accept the task…")
     guard let http=response as? HTTPURLResponse, http.statusCode==200 else {
       throw AgentFailure.http((response as? HTTPURLResponse)?.statusCode ?? 0)
     }
@@ -318,7 +335,10 @@ struct AgentActivity: Identifiable {
       let raw=String(line.dropFirst(6))
       guard raw != "[DONE]", let data=raw.data(using:.utf8),
         let event=try JSONSerialization.jsonObject(with:data) as? [String:Any], let type=event["type"] as? String else { continue }
-      if type == "response.output_text.delta" || type == "response.refusal.delta" {
+      if type == "response.created" || type == "response.in_progress" {
+        accepted=true
+        if content.isEmpty { progress=text("服务端已接收，正在等待推理结果…","Server accepted the request; waiting for reasoning…") }
+      } else if type == "response.output_text.delta" || type == "response.refusal.delta" {
         content += event["delta"] as? String ?? "";updateBrief(content)
         if Date().timeIntervalSince(lastUIUpdate)>0.1 { liveResponse=content;lastUIUpdate=Date() }
       } else if type == "response.output_item.added", let item=event["item"] as? [String:Any], item["type"] as? String == "function_call" {
@@ -365,6 +385,13 @@ struct AgentActivity: Identifiable {
     var result:[String:Any]=["role":"assistant","content":content,"response_items":output]
     if !calls.isEmpty { result["tool_calls"]=calls }
     return result
+    } catch {
+      if Task.isCancelled { throw CancellationError() }
+      if connectionExpired || (error as NSError).domain == NSURLErrorDomain {
+        throw AgentFailure.transport(connected:connected,accepted:accepted)
+      }
+      throw error
+    }
   }
 
   private func native(_ args:[String:Any]) async throws -> String {
@@ -517,9 +544,13 @@ struct AgentActivity: Identifiable {
 
 enum AgentFailure: LocalizedError {
   case http(Int),invalidResponse,truncated,canvas,contextLimit
+  case transport(connected:Bool,accepted:Bool)
   var errorDescription:String? {
     let zh=Locale.preferredLanguages.first?.hasPrefix("zh") == true
     switch self {
+    case .transport(let connected,let accepted):
+      if accepted { return zh ? "与 Agent 的连接已中断，任务记录已保留；这不表示推理失败，请重试继续。" : "The Agent connection was interrupted. Task history is retained; reasoning has not been marked as failed. Retry to continue." }
+      return connected ? (zh ? "已连接服务，但尚未收到任务接收确认，连接随后中断。请重试。" : "Connected, but the connection ended before task acceptance was confirmed. Please retry.") : (zh ? "未能连接 Agent 服务，请检查网络后重试。" : "Could not connect to the Agent service. Check your connection and retry.")
     case .http(let code):return zh ? "服务请求失败（\(code)），请检查密钥、余额或网络。" : "API request failed (\(code)). Check your key, balance and connection."
     case .invalidResponse:return zh ? "回复中断或格式无效，请重试。" : "Incomplete or invalid response. Please retry."
     case .truncated:return zh ? "回复超过本轮限制，未执行不完整的操作。" : "Response exceeded this turn's limit. Incomplete actions were not executed."

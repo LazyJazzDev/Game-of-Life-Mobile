@@ -166,6 +166,18 @@ export class LifeAgent {
     const decoder = new util.TextDecoder('utf-8');
     let buffer = '', content = '', failure = '', pendingName = '', argumentBytes = 0;
     let done = false;
+    let connected = false, accepted = false;
+    const started = Date.now();
+    const waiting = (value: string): void => {
+      if (epoch !== this.epoch || content.length) return;
+      this.progress = value;
+      this.changed();
+    };
+    waiting(this.text('正在连接 Agent 服务…', 'Connecting to the Agent service…'));
+    request.on('headersReceive', () => {
+      connected = true;
+      waiting(this.text('已连接，等待服务端接收任务…', 'Connected; waiting for the server to accept the task…'));
+    });
     let output: ResponseItem[] = [];
     const ended = new Promise<void>((resolve: () => void) => {
       this.endStream = resolve;
@@ -183,7 +195,10 @@ export class LifeAgent {
         if (raw === '[DONE]') continue;
         try {
           const event = JSON.parse(raw) as ResponseEvent;
-          if (event.type === 'response.output_text.delta' || event.type === 'response.refusal.delta') {
+          if (event.type === 'response.created' || event.type === 'response.in_progress') {
+            connected = true; accepted = true;
+            waiting(this.text('服务端已接收，正在等待推理结果…', 'Server accepted the request; waiting for reasoning…'));
+          } else if (event.type === 'response.output_text.delta' || event.type === 'response.refusal.delta') {
             content += event.delta ?? ''; this.liveResponse = content; this.updateBrief(content);
           } else if (event.type === 'response.output_item.added' && event.item?.type === 'function_call') {
             pendingName = event.item.name ?? ''; argumentBytes = 0;
@@ -211,8 +226,9 @@ export class LifeAgent {
     try {
       const status = await request.requestInStream('https://api.openai.com/v1/responses', {
         method: http.RequestMethod.POST, header: {'Content-Type': 'application/json', 'Authorization': `Bearer ${this.key.trim()}`},
-        extraData: JSON.stringify(body), connectTimeout: 30000, readTimeout: 120000
+        extraData: JSON.stringify(body), connectTimeout: 30000, readTimeout: 0
       });
+      connected = true;
       if (status !== 200) throw new Error(`HTTP ${status}`);
       await ended;
       if (failure) throw new Error(failure);
@@ -233,14 +249,26 @@ export class LifeAgent {
       const message: Message = {role: 'assistant', content, response_items: output};
       if (calls.length) message.tool_calls = calls;
       return message;
+    } catch (error) {
+      const message = (error as Error).message;
+      const code = (error as TransportError).code ?? 0;
+      console.info(`Agent transport: connected=${connected}, accepted=${accepted}, elapsedMs=${Date.now()-started}, code=${code}`);
+      if (epoch !== this.epoch) throw error as Error;
+      if (code > 0 || /timeout|network|connection|resolve|ssl|incomplete_stream/i.test(message)) {
+        throw new Error(accepted ? this.text('与 Agent 的连接已中断，任务记录已保留；这不表示推理失败，请重试继续。', 'The Agent connection was interrupted. Task history is retained; reasoning has not been marked as failed. Retry to continue.') :
+          connected ? this.text('已连接服务，但尚未收到任务接收确认，连接随后中断。请重试。', 'Connected, but the connection ended before task acceptance was confirmed. Please retry.') :
+          this.text('未能连接 Agent 服务，请检查网络后重试。', 'Could not connect to the Agent service. Check your connection and retry.'));
+      }
+      throw error as Error;
     } finally { this.endStream = undefined; request.destroy(); if (this.request === request) this.request = undefined; }
   }
   async send(input: string): Promise<void> {
     if (this.busy || !this.key.trim() || !this.consent || !input.trim() || !this.systemPrompt) return;
     this.recoverHistory();
     this.lines.push({role: 'user', text: input.trim()});
-    this.progress = this.text('等待 Agent 的工作简报…', 'Waiting for the Agent’s work brief…');
-    this.busy = true; const epoch = ++this.epoch;
+    this.progress = this.text('已收到你的任务，正在连接 Agent…', 'Task received. Connecting to the Agent…');
+    this.lines.push({role: 'assistant', text: this.progress});
+    this.busy = true; const epoch = ++this.epoch; this.changed();
     if (!this.history.length) this.history.push({role: 'system', content: this.systemPrompt});
     this.history.push({role: 'user', content: input.trim()});
     this.ticker = setInterval(() => this.changed(), 1000);
@@ -314,3 +342,5 @@ export class LifeAgent {
   }
 }
 interface ToolResult { ok?: boolean; error?: string; }
+
+interface TransportError { code?: number; }

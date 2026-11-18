@@ -477,3 +477,29 @@ message. HarmonyOS build 112 was installed over the existing app on Mate 70; pac
 metadata confirms version 1.0.3/build 112, and a device screenshot confirms normal
 startup and the restored canvas. Its Agent loop and native polling bridge passed
 the automated tests above; the full interactive Agent trial was run on iOS.
+
+### Agent transport feedback (build 113 / iOS build 38)
+
+Submitting a task immediately adds a local acknowledgement to the conversation.
+This acknowledgement is not sent back to the model as model-authored history.
+Connection establishment, waiting for server acceptance and accepted-response
+reasoning have distinct progress text. Only `response.created` or
+`response.in_progress` confirms acceptance; HTTP headers alone do not.
+
+HarmonyOS keeps a 30-second connect timeout but sets `readTimeout: 0`, documented
+by the SDK as no read timeout. An accepted response can therefore reason silently
+past the previous 120-second limit. iOS uses a dedicated streaming session with
+no practical reasoning deadline and a separate 30-second response-connection
+watchdog that is cancelled on receipt of headers. Stop still cancels the request.
+Neither client retries edits or pretends a disconnected response is still running.
+Network errors distinguish connection failure, interruption before acceptance,
+and interruption after acceptance; the latter explicitly retains task history
+without describing the model's reasoning as failed.
+
+Verification: `node harmonyos/tests/agent.cjs` covers immediate acknowledgement
+before any network result, header/acceptance transitions, timeout configuration,
+all three transport-error states and existing cancellation/tool-loop behavior.
+Both platforms compile. Mate 70 reports installed version 1.0.3/build 113 after
+an in-place update, and its restored canvas renders normally. This does not
+reproduce the earlier intermittent network failure or claim to identify its
+underlying network cause.
