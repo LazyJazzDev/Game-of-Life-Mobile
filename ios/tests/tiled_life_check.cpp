@@ -274,6 +274,69 @@ int main(int argc, char **argv) {
     }
   }
   std::cout << "PASS filtered viewport peak: empty, single cell, mixed densities, clear, pan/zoom/cache\n";
+
+  // Exercise the real GPU gain state, including cached/static views. A step in
+  // target must preserve value/velocity/acceleration, then settle without a
+  // refresh-rate-dependent response or resetting on empty scenes.
+  life_demo::TiledLife smooth;
+  if (!smooth.Initialize(device.Get(), source, 2, 64))
+    return 40;
+  auto gain_frame = [&](float dt, const std::vector<uint8_t> *scene, std::array<float, 5> &state) {
+    ObjPtr<ICommandContext> context = queue->CreateCommandContext();
+    if (scene && !smooth.Upload(context.Get(), Pack(*scene, 512)))
+      return false;
+    if (!smooth.UpdateViewContrast(context.Get(), {0, 0}, 0.5f, {0, 0, 256, 256}, dt))
+      return false;
+    ObjPtr<IDownloadToken> read = context->CmdDownloadBuffer(smooth.Mipmaps(), smooth.ViewGainByteOffset(), 20);
+    ObjPtr<ISubmissionToken> done = context->Submit();
+    return read && done && done->WaitHost() && read->CopyTo(state.data(), 20);
+  };
+  std::vector<uint8_t> full(512 * 512, 1), single(512 * 512, 0), empty(512 * 512, 0);
+  single[100 * 512 + 100] = 1;
+  std::array<float, 5> state{}, before{};
+  if (!gain_frame(0, &full, state) || std::abs(state[0] - 1) > 1e-6f)
+    return 41;
+  before = state;
+  if (!gain_frame(0, &single, state) || state[0] != before[0] || state[1] != before[1] || state[2] != before[2] ||
+      state[3] != before[3] || std::abs(state[4] - 2) > 1e-5f)
+    return 42;
+  double time = 0;
+  for (float dt : {1.0f / 120, 1.0f / 60, 1.0f / 30, 0.05f, 0.1f}) {
+    time += dt;
+    if (!gain_frame(dt, nullptr, state))
+      return 43;
+    const double t = time / 0.12;
+    const double expected = std::exp2(2 * (1 - std::exp(-t) * (1 + t + t * t / 2)));
+    if (std::abs(state[0] - expected) > 3e-5)
+      return 44;
+  }
+  // Retarget while moving: all three filter states (and hence first two
+  // derivatives of log-gain and gain) must survive a target discontinuity.
+  before = state;
+  if (!gain_frame(0, &full, state) || state[0] != before[0] || state[1] != before[1] || state[2] != before[2] ||
+      state[3] != before[3])
+    return 45;
+  for (int i = 0; i < 150; ++i)
+    if (!gain_frame(1.0f / 60, nullptr, state))
+      return 46;
+  if (std::abs(state[0] - 1) > 1e-5 || smooth.ContrastAnimating())
+    return 47;
+  float largest_gain_step = 0;
+  for (int i = 0; i < 120; ++i) {
+    const float previous = state[0];
+    if (!gain_frame(1.0f / 60, i % 2 ? &full : &single, state))
+      return 49;
+    largest_gain_step = std::max(largest_gain_step, std::abs(state[0] - previous));
+  }
+  // Raw gain alternates 1 <-> 4. Filtered gain must suppress that global flicker.
+  if (largest_gain_step > 0.08f || state[0] < 1.9f || state[0] > 2.1f)
+    return 50;
+  std::cout << "Alternating peak: raw gain step=3, smoothed max step=" << largest_gain_step << "\n";
+  before = state;
+  if (!gain_frame(0, &empty, state) || state != before || !std::isfinite(state[0]))
+    return 48;
+  std::cout << "PASS GPU C2 gain: zero-time retarget, exact timed response, cached-view settling, empty view\n";
+
   for (auto &cell : cpu)
     cell = random() & 1;
   if (!submit_upload() || !verify_steps(2, true))
