@@ -23,8 +23,9 @@ struct AgentActivity: Identifiable {
   @Published var activities: [AgentActivity] = []
   @Published var startedAt = Date()
   private let key: String
+  private var hasModelFeedback = false
   private var layoutNeedsSave = false
-  private let model = "gpt-6-astra"
+  private let model = "deepseek-flash"
   private let initialReasoningEffort: String = {
     #if targetEnvironment(simulator)
     if ProcessInfo.processInfo.environment["LONGMARCH_AGENT_EFFORT"] == "low" { return "low" }
@@ -122,7 +123,7 @@ struct AgentActivity: Identifiable {
     guard !busy, !input.isEmpty, !key.isEmpty, consent else { return }
     recoverHistory()
     messages.append(AgentMessage(role:"user",text:input));busy=true;outcome=""
-    taskFinished=false;waitingForUser=false
+    taskFinished=false;waitingForUser=false;hasModelFeedback=false
     liveResponse="";activities=[];startedAt=Date();progress=text("已收到你的任务，正在连接 Agent…","Task received. Connecting to the Agent…")
     messages.append(AgentMessage(role:"assistant",text:progress))
     generation += 1
@@ -143,7 +144,7 @@ struct AgentActivity: Identifiable {
         liveResponse=""
         if let last=activities.indices.last, !activities[last].finished { activities[last].finished=true;activities[last].failed=failed }
         endPreview();research.hide()
-        busy=false;progress=failed ? text("请求失败", "Request failed") : waitingForUser ? text("等待你的信息", "Waiting for your input") : text("已完成", "Finished");outcome=progress;task=nil
+        busy=false;progress=failed ? text("请求失败", "Request failed") : waitingForUser ? text("等待你的信息", "Waiting for your input") : hasModelFeedback ? progress : text("已完成", "Finished");outcome=progress;task=nil
         saveTrace()
         #if targetEnvironment(simulator)
           if ProcessInfo.processInfo.environment["LONGMARCH_AGENT_SMOKE"] != nil {
@@ -239,7 +240,7 @@ struct AgentActivity: Identifiable {
 
   private func updateBrief(_ value:String) {
     let sentence=value.trimmingCharacters(in:.whitespacesAndNewlines).components(separatedBy:CharacterSet(charactersIn:"。！？!?\n")).first ?? ""
-    if !sentence.isEmpty { progress=String(sentence.prefix(160)) }
+    if !sentence.isEmpty { hasModelFeedback=true;progress=String(sentence.prefix(160)) }
   }
   private func reportBrief(_ value:String) {
     let brief=value.trimmingCharacters(in:.whitespacesAndNewlines)
@@ -268,23 +269,8 @@ struct AgentActivity: Identifiable {
     }
   }
 
-  private func responseInput() -> [[String:Any]] {
-    var input:[[String:Any]]=[]
-    for message in history {
-      if let items=message["response_items"] as? [[String:Any]] {
-        input.append(contentsOf:items)
-      } else if message["role"] as? String == "tool" {
-        input.append(["type":"function_call_output","call_id":message["tool_call_id"] as? String ?? "","output":message["content"] as? String ?? ""])
-      } else {
-        let role=message["role"] as? String ?? "user"
-        input.append(["role":role == "system" ? "developer" : role,"content":message["content"] as? String ?? ""])
-      }
-    }
-    return input
-  }
-
   private func completion(_ tools:Any, reasoningEffort:String) async throws -> [String:Any] {
-    var request=URLRequest(url:URL(string:"https://api.openai.com/v1/responses")!)
+    var request=URLRequest(url:URL(string:"https://api.deepseek.com/chat/completions")!)
     request.httpMethod="POST"
     // No practical reasoning deadline; connection setup is guarded separately.
     let configuration=URLSessionConfiguration.ephemeral
@@ -298,9 +284,11 @@ struct AgentActivity: Identifiable {
       if !connected { connectionExpired=true;session.invalidateAndCancel() }
     }
     defer { connectionWatch.cancel();session.invalidateAndCancel() }
-    progress=text("正在连接 Agent 服务…","Connecting to the Agent service…")
+    if !hasModelFeedback { progress=text("正在连接 Agent 服务…","Connecting to the Agent service…") }
     request.setValue("Bearer \(key)",forHTTPHeaderField:"Authorization")
     request.setValue("application/json",forHTTPHeaderField:"Content-Type")
+    // Keep tool-call chains intact, but retire large old outputs once sources
+    // and authored helpers are available through the research workspace.
     if try JSONSerialization.data(withJSONObject:history).count > 384*1024 {
       for i in history.indices where i > 0 && i < history.count-8 {
         if history[i]["role"] as? String == "tool", let text=history[i]["content"] as? String, text.count>1800 {
@@ -308,82 +296,63 @@ struct AgentActivity: Identifiable {
         }
       }
     }
-    let input=responseInput()
-    guard try JSONSerialization.data(withJSONObject:input).count <= 2*1024*1024 else { throw AgentFailure.contextLimit }
-    guard let definitions=tools as? [[String:Any]] else { throw AgentFailure.invalidResponse }
-    let functions=try definitions.map { definition -> [String:Any] in
-      guard var function=definition["function"] as? [String:Any] else { throw AgentFailure.invalidResponse }
-      function["type"]="function";function["strict"]=false
-      return function
-    }
-    request.httpBody=try JSONSerialization.data(withJSONObject:["model":model,"input":input,"tools":functions,
-      "reasoning":["effort":reasoningEffort],"max_output_tokens":32768,"stream":true,
-      "store":false,"include":["reasoning.encrypted_content"],"parallel_tool_calls":false])
+    let historySize=try JSONSerialization.data(withJSONObject:history).count
+    guard historySize <= 2*1024*1024 else { throw AgentFailure.contextLimit }
+    request.httpBody=try JSONSerialization.data(withJSONObject:["model":model,"messages":history,"tools":tools,
+      "thinking":["type":"enabled"],"reasoning_effort":reasoningEffort,"max_tokens":32768,"stream":true])
     do {
     let (bytes,response)=try await session.bytes(for:request)
     connected=true;connectionWatch.cancel()
-    progress=text("已连接，等待服务端接收任务…","Connected; waiting for the server to accept the task…")
+    if !hasModelFeedback { progress=text("已连接，等待服务端接收任务…","Connected; waiting for the server to accept the task…") }
     guard let http=response as? HTTPURLResponse, http.statusCode==200 else {
       throw AgentFailure.http((response as? HTTPURLResponse)?.statusCode ?? 0)
     }
-    var content="",pendingName="",argumentBytes=0
+    var content="",reasoning=""
     var lastUIUpdate=Date.distantPast
-    var output:[[String:Any]]?
+    var calls: [Int:[String:Any]]=[:]
+    var finished=false
     for try await line in bytes.lines {
       try Task.checkCancellation()
       guard line.hasPrefix("data: ") else { continue }
       let raw=String(line.dropFirst(6))
-      guard raw != "[DONE]", let data=raw.data(using:.utf8),
-        let event=try JSONSerialization.jsonObject(with:data) as? [String:Any], let type=event["type"] as? String else { continue }
-      if type == "response.created" || type == "response.in_progress" {
+      if raw=="[DONE]" { finished=true;break }
+      guard let data=raw.data(using:.utf8),let event=try JSONSerialization.jsonObject(with:data) as? [String:Any],
+        let choices=event["choices"] as? [[String:Any]],let choice=choices.first,
+        let delta=choice["delta"] as? [String:Any] else { continue }
+      if !accepted {
         accepted=true
-        if content.isEmpty { progress=text("服务端已接收，正在等待推理结果…","Server accepted the request; waiting for reasoning…") }
-      } else if type == "response.output_text.delta" || type == "response.refusal.delta" {
-        content += event["delta"] as? String ?? "";updateBrief(content)
+        if !hasModelFeedback { progress=text("服务端已接收，正在等待推理结果…","Server accepted the request; waiting for reasoning…") }
+      }
+      if let reason=delta["reasoning_content"] as? String { reasoning+=reason }
+      if let part=delta["content"] as? String {
+        content+=part;updateBrief(content)
         if Date().timeIntervalSince(lastUIUpdate)>0.1 { liveResponse=content;lastUIUpdate=Date() }
-      } else if type == "response.output_item.added", let item=event["item"] as? [String:Any], item["type"] as? String == "function_call" {
-        pendingName=item["name"] as? String ?? "";argumentBytes=0
-      } else if type == "response.function_call_arguments.delta" {
-        argumentBytes += (event["delta"] as? String ?? "").utf8.count
-        if ["research_script","research_write"].contains(pendingName), let last=activities.indices.last {
-          activities[last].detail="\(argumentBytes/1024) KB"
-        }
-      } else if type == "response.incomplete" {
-        let response=event["response"] as? [String:Any]
-        let details=response?["incomplete_details"] as? [String:Any]
-        if details?["reason"] as? String == "max_output_tokens" { throw AgentFailure.truncated }
-        throw AgentFailure.invalidResponse
-      } else if type == "response.failed" || type == "error" {
-        throw AgentFailure.invalidResponse
-      } else if type == "response.completed" {
-        guard let final=event["response"] as? [String:Any], final["status"] as? String == "completed",
-          let items=final["output"] as? [[String:Any]] else { throw AgentFailure.invalidResponse }
-        // Replay complete output, including encrypted reasoning and assistant phase.
-        // created_by is output-only provenance (OpenAI SDK normalization convention).
-        output=items.map { item in var replay=item;replay.removeValue(forKey:"created_by");return replay }
-        break
       }
-      if content.utf8.count+argumentBytes > 512*1024 { throw AgentFailure.truncated }
-    }
-    guard let output else { throw AgentFailure.invalidResponse }
-    var calls:[[String:Any]]=[]
-    var texts:[String]=[]
-    for item in output {
-      if item["type"] as? String == "message", let parts=item["content"] as? [[String:Any]] {
-        for part in parts {
-          if let text=part["text"] as? String { texts.append(text) }
-          else if let refusal=part["refusal"] as? String { texts.append(refusal) }
+      if let changes=delta["tool_calls"] as? [[String:Any]] {
+        for change in changes {
+          let index=change["index"] as? Int ?? 0
+          var call=calls[index] ?? ["type":"function","function":["name":"","arguments":""]]
+          if let id=change["id"] { call["id"]=id }
+          var fn=call["function"] as! [String:String]
+          if let f=change["function"] as? [String:Any] {
+            if let n=f["name"] as? String { fn["name",default:""]+=n }
+            if let a=f["arguments"] as? String { fn["arguments",default:""]+=a }
+          }
+          call["function"]=fn;calls[index]=call
+          if fn["name"] == "research_script" || fn["name"] == "research_write" {
+            if let last=activities.indices.last {
+              activities[last].detail="\((fn["arguments"] ?? "").utf8.count / 1024) KB"
+            }
+          }
         }
-      } else if item["type"] as? String == "function_call" {
-        guard let id=item["call_id"] as? String, let name=item["name"] as? String,
-          let arguments=item["arguments"] as? String else { throw AgentFailure.invalidResponse }
-        calls.append(["id":id,"type":"function","function":["name":name,"arguments":arguments]])
       }
+      if let reason=choice["finish_reason"] as? String, reason=="length" { throw AgentFailure.truncated }
+      if content.utf8.count+reasoning.utf8.count > 256*1024 { throw AgentFailure.truncated }
     }
-    content=texts.joined(separator:"\n")
+    guard finished else { throw AgentFailure.invalidResponse }
     liveResponse=content
-    var result:[String:Any]=["role":"assistant","content":content,"response_items":output]
-    if !calls.isEmpty { result["tool_calls"]=calls }
+    var result: [String:Any] = ["role":"assistant","content":content,"reasoning_content":reasoning]
+    if !calls.isEmpty { result["tool_calls"]=calls.keys.sorted().compactMap { calls[$0] } }
     return result
     } catch {
       if Task.isCancelled { throw CancellationError() }
@@ -451,7 +420,7 @@ struct AgentActivity: Identifiable {
     if name == "task_complete" {
       if layoutNeedsSave { return "{\"ok\":false,\"error\":\"layout_save_required\",\"next_action\":\"Choose a layout name and call canvas_save. If name_exists, rename and retry. Then call task_complete.\"}" }
       guard let summary=args["summary"] as? String, !summary.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty, let evidence=args["evidence"] as? [String], !evidence.isEmpty, evidence.allSatisfy({ !$0.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty }) else { throw AgentFailure.invalidResponse }
-      messages.append(AgentMessage(role:"assistant",text:summary));taskFinished=true
+      messages.append(AgentMessage(role:"assistant",text:summary));updateBrief(summary);taskFinished=true
       return "{\"ok\":true,\"completed\":true}"
     }
     if name == "task_wait" {
@@ -624,8 +593,8 @@ struct AgentPanel: View {
       .sheet(isPresented:$settings) {
         NavigationStack {
           Form {
-            Toggle(agent.text("允许将消息及必要的画布数据发送给 OpenAI","Allow sending messages and necessary canvas data to OpenAI"),isOn:$agent.consent)
-            Text(agent.text("仅在使用助手时联网，使用应用配置的 OpenAI 服务；不会上传完整画布。","Only the assistant uses the configured OpenAI service. The full canvas is not uploaded.")).font(.footnote)
+            Toggle(agent.text("允许将消息及必要的画布数据发送给 DeepSeek","Allow sending messages and necessary canvas data to DeepSeek"),isOn:$agent.consent)
+            Text(agent.text("仅在使用助手时联网，使用应用配置的 DeepSeek 服务；不会上传完整画布。","Only the assistant uses the configured DeepSeek service. The full canvas is not uploaded.")).font(.footnote)
           }.navigationTitle(agent.text("助手设置","Agent settings"))
             .toolbar { Button(agent.text("完成","Done")) { settings=false } }
         }.presentationDetents([.medium])

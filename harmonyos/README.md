@@ -270,14 +270,23 @@ checkpoint.
 
 ## Current Agent provider
 
-Both platforms now use OpenAI `gpt-6-astra` with high reasoning via Responses.
-`prepare_agent.py` stages the local `tools/openai-api.key`; the credential remains
-ignored by Git. Consent UI names OpenAI. Requests disable server-side response
-storage, preserve encrypted reasoning/assistant phase for tool continuation,
-and execute only complete responses. Stop and network-error recovery retain
+Both platforms use DeepSeek `deepseek-flash` with high reasoning via streaming
+Chat Completions. `prepare_agent.py` stages `tools/deepseek-api.key`; the local
+credential remains ignored by Git. Existing iOS CMake build directories must use
+`-DLIFE_AGENT_KEY_FILE=/absolute/path/to/tools/deepseek-api.key` if their cache
+still overrides the default. Consent UI names DeepSeek. The client retains
+reasoning content for tool continuation without exposing it in the conversation.
+Only complete streams execute tools. Stop and network-error recovery preserve
 completed task context without replaying incomplete tool batches. The loop has
-no fixed round or tool-call limit. See `ios/agent/README.md` for the shared tool
-contract and fresh-install testing requirements.
+no fixed round or tool-call limit.
+
+Build 114 / iOS build 39 preserves the model's latest brief once it starts
+replying. Later connection headers or reasoning chunks cannot replace that brief
+with transport status. A new user task gets an immediate acknowledgement; final
+completion keeps the model's summary. The no-read-deadline behavior from build
+113 remains. Tests cover multi-request brief retention, DeepSeek fragmented SSE,
+reasoning replay, tool confirmation, save collision retries and network errors.
+Both builds compile, and a live DeepSeek Flash streaming request returned `OK`.
 
 The following build reports describe historical DeepSeek validation runs.
 

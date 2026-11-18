@@ -119,7 +119,7 @@ if(GOL_APP AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${target}-bundle")
   file(CREATE_LINK "${GAME_OF_LIFE_RESOURCES}" "${bundle_resources}" SYMBOLIC)
   # The configured credential is bundled, but never copied into tracked sources.
-  set(LIFE_AGENT_KEY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../tools/openai-api.key" CACHE FILEPATH "Local bundled Agent credential")
+  set(LIFE_AGENT_KEY_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../tools/deepseek-api.key" CACHE FILEPATH "Local bundled Agent credential")
   if(EXISTS "${LIFE_AGENT_KEY_FILE}")
     configure_file("${LIFE_AGENT_KEY_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/AgentCredential.key" COPYONLY)
   else()

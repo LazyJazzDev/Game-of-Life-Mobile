@@ -1124,7 +1124,7 @@ struct Index {
           if (this.agentSettings || !this.agentConsent || !this.agentKey.length) {
             Row({ space: 8 }) {
               Checkbox().select(this.agentConsent).onChange((value: boolean) => { this.agentConsent = value; if (!value) this.agent.cancel(); })
-              Text(this.agent.text('允许将消息与必要画布数据发送给 OpenAI，以使用 Agent。', 'Allow messages and necessary canvas data to be sent to OpenAI to use the Agent.'))
+              Text(this.agent.text('允许将消息与必要画布数据发送给 DeepSeek，以使用 Agent。', 'Allow messages and necessary canvas data to be sent to DeepSeek to use the Agent.'))
                 .fontSize(12).fontColor(SECONDARY).layoutWeight(1)
             }
           }
