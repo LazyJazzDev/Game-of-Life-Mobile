@@ -87,7 +87,29 @@ Evidence directory: `out/migration-mobile-bridge/` (local, not committed).
 - Independent JS tests passed: research Life/playback and Harmony Agent, native
   bridge, file recovery, research lookup and privacy startup/hosted-policy paths.
 
-The Mate 70 is currently absent from `hdc list targets`. Compilation and host
-SPIR-V replay do not establish native Vulkan driver correctness. Installation,
-rendering, touch and foreground/background validation on HarmonyOS remain pending
-connection. No App submission, release, PR merge or history rewrite was performed.
+## Mate 70 device validation (2026-11-20)
+
+Build 116 was installed over the existing app without uninstalling or clearing data.
+`mate70/installed.json` confirms version 1.0.3, versionCode 1000003 and buildVersion 116.
+The capturePattern path uses a transient canvas and does not overwrite LastCanvas.gol.
+
+The independent reviewer executed the continuous device test at 14:16:36-45 Beijing
+time and visually checked screenshots 03-07. Results:
+
+- Startup and built-in glider import rendered correctly (`01-import.jpeg`).
+- Real two-finger input through `uinput -T` enlarged cells approximately twofold
+  (`03-before-pinch.jpeg`, `04-after-pinch.jpeg`).
+- Play advanced the glider's position and phase; pause restored the play icon
+  (`05-evolving.jpeg`, `06-paused.jpeg`).
+- Home/background then foreground preserved the paused canvas and view
+  (`07-resumed.jpeg`). PID remained 22392 across the transition.
+
+Evidence is local under `out/migration-mobile-bridge/mate70/`: `interaction.log`
+records commands, timestamps and PIDs; `pid22392-hilog.log` contains the final
+read-only per-process log capture. The captured interval contains no ERROR/FATAL
+entries or VK_ERROR/device-lost reports. Most GPU-tagged entries are ArkWeb
+configuration messages, not Vulkan validation-layer diagnostics. These checks
+establish the tested runtime behavior, not exhaustive GPU synchronization validation.
+`02-pinch.jpeg` is an earlier lock-screen capture and is not passing evidence.
+
+No App submission, release, PR merge, App push or history rewrite was performed.
