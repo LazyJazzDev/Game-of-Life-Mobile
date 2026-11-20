@@ -14,7 +14,7 @@ included as a Git submodule; this repository holds the mobile apps around it.
 ## Layout
 
 - `LongMarch/`: the engine and the Game of Life demo (submodule, branch
-  `mobile-app-base`). Clone with `git submodule update --init LongMarch`; the
+  `mobile-bridge`). Clone with `git submodule update --init LongMarch`; the
   submodule's own submodules (LongMarch assets) are not needed.
 - `ios/`: SwiftUI app, Metal host and resource preparation.
 - `harmonyos/`: DevEco project with the ArkUI page and Vulkan host.
