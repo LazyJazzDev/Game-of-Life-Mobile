@@ -1,9 +1,11 @@
 # 生命游戏 · Game of Life (mobile)
 
 Conway's Game of Life for iPhone, iPad and HarmonyOS, with 736 patterns from the
-Life Lexicon. The game itself (simulation, controls, rendering and shaders) is
-the Game of Life demo of [LongMarch](https://github.com/LazyJazzDev/LongMarch),
-included as a Git submodule; this repository holds the mobile apps around it.
+Life Lexicon. This repository owns the simulation, controls, rendering, shaders,
+Agent integration, patterns and mobile apps. Shared Game of Life code lives in
+`game/`. [LongMarch](https://github.com/LazyJazzDev/LongMarch) is a Git submodule
+providing general RHI/util APIs and mobile build support; application business
+logic must be changed here, not in LongMarch demos.
 
 | | iOS / iPadOS | HarmonyOS |
 |---|---|---|
@@ -13,12 +15,13 @@ included as a Git submodule; this repository holds the mobile apps around it.
 
 ## Layout
 
-- `LongMarch/`: the engine and the Game of Life demo (submodule, branch
+- `game/`: shared GoL computation, rendering, shaders, controls, patterns and licenses.
+- `LongMarch/`: general RHI/util dependency and mobile build support (submodule, branch
   `mobile-bridge`). Clone with `git submodule update --init LongMarch`; the
   submodule's own submodules (LongMarch assets) are not needed.
 - `ios/`: SwiftUI app, Metal host and resource preparation.
 - `harmonyos/`: DevEco project with the ArkUI page and Vulkan host.
-- `mobile/`: dependencies shared by both hosts (vcpkg manifest and CMake).
+- `mobile/`: shared Agent tools/research, Vulkan shader preparation and host dependency configuration.
 - `docs/`: GitHub Pages, including the [privacy policy](https://lazyjazzdev.github.io/Game-of-Life-Mobile/privacy/).
 - `store/`: store listing text and the screenshot capture/compose scripts.
 - `tools/app_icon.py`: renders the app icons for both platforms.
