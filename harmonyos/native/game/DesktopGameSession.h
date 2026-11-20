@@ -1,6 +1,6 @@
 #pragma once
 #include "../../../mobile/AgentTemplates.h"
-#include "demo/gol/application/hosted_window.h"
+#include "game/application/hosted_window.h"
 #include "grassland/rhi/rhi.h"
 
 namespace life_demo {

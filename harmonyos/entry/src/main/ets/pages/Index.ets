@@ -9,7 +9,7 @@ import { HostedPrivacy } from '../privacy/HostedPrivacy';
 
 interface NativeTemplateResult { ok: boolean; error?: string; }
 interface PatternFile { name: string; modified: number; }
-// A named pattern from the built-in Life Lexicon library (demo/gol/patterns/library.json).
+// A named pattern from the built-in Life Lexicon library (game/patterns/library.json).
 interface AgentPatternMatch { name: string; category: string; width: number; height: number; }
 interface BuiltinPattern {
   name: string; category: string; width: number; height: number; period?: number; speed?: string; rle: string;

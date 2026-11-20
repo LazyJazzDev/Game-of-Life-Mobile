@@ -5,8 +5,8 @@ A prepare build of gol_check (GOL_PREPARE=ON, links Slang and SPIRV-Cross)
 renders the game once and writes every shader it compiles. A replay build
 (GOL_PREPARE=OFF, like the app) then runs against an empty shader folder; each
 shader it reports missing is copied from the prepared cache until the game
-renders. Both the Slang SPIR-V and the Metal entries it reads are kept, so the
-output also serves as the source of a HarmonyOS bundle.
+renders. This is an iOS-only bundle; HarmonyOS compiles separate target-specific
+SPIR-V from the shared App shader recipes.
 """
 import argparse
 from pathlib import Path
@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--prepare', type=Path, required=True, help='Prepare build of gol_check')
 parser.add_argument('--checker', type=Path, required=True, help='Replay build of gol_check')
-parser.add_argument('--patterns', type=Path, default=ROOT / 'LongMarch/demo/gol/patterns')
+parser.add_argument('--patterns', type=Path, default=ROOT / 'game/patterns')
 parser.add_argument('--output', type=Path, required=True)
 args = parser.parse_args()
 if args.output.exists():
@@ -29,7 +29,7 @@ args.output.parent.mkdir(parents=True, exist_ok=True)
 
 def run(checker: Path, resources: Path, output: Path, *extra: str) -> subprocess.CompletedProcess:
     return subprocess.run([str(checker.resolve()), str(resources), str(output), extra[0] if extra else 'replay',
-                           str(ROOT / 'LongMarch/demo/gol/shaders/tiled_life.slang')],
+                           str(ROOT / 'game/shaders/tiled_life.slang')],
                           capture_output=True, text=True)
 
 
@@ -53,11 +53,5 @@ with tempfile.TemporaryDirectory(prefix='game-bundle-', dir=args.output.parent) 
         if not source.exists():
             raise RuntimeError(f'The prepare build did not produce {missing.group(1)}')
         shutil.copy2(source, staging / 'shaders')
-    for shader in (prepared / "shaders").glob("slang-*"):
-        shutil.copy2(shader, staging / "shaders")
-    # Metal replay uses threads-msl metadata, but Vulkan needs the original
-    # threads-slang entries even when Metal never reads them during replay.
-    for metadata in (prepared / "shaders").glob("threads-slang-*"):
-        shutil.copy2(metadata, staging / "shaders")
     staging.rename(args.output)
 print(f'Prepared Game of Life with {len(list((args.output / "shaders").iterdir()))} shaders in {args.output}')

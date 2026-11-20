@@ -463,7 +463,7 @@ enum GameResources {
     Bundle.main.object(forInfoDictionaryKey: "LongMarchGameResources") as? String ?? "GameResources")
 }
 
-// A named pattern from the built-in Life Lexicon library (demo/gol/patterns/library.json).
+// A named pattern from the built-in Life Lexicon library (game/patterns/library.json).
 struct BuiltinPattern: Decodable, Identifiable {
   let name: String
   let category: String

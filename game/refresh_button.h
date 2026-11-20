@@ -1,0 +1,48 @@
+#pragma once
+#include <functional>
+
+#include "application/animation_var.h"
+#include "application/button.h"
+#include "application/model.h"
+
+namespace life_demo {
+
+class RefreshButton : public Button {
+ public:
+  RefreshButton(Application *app,
+                float left,
+                float top,
+                float right,
+                float bottom,
+                std::vector<uint8_t> *game_buffer,
+                DeviceModel *device_model);
+
+  void SetResetHandler(std::function<void()> handler) {
+    action_ = std::move(handler);
+  }
+
+  void Update(float t);
+  void Draw();
+
+  bool IsAnimating() const {
+    return !refresh_animation_var_.IsFinished() || !background_animation_var_.IsFinished();
+  }
+
+ private:
+  std::function<void()> action_;
+  void OnResize() override;
+  void OnClick() override;
+  void OnStateChange(int state) override;
+  void ResizeModel();
+  bool play_{false};
+  std::unique_ptr<MixModel> refresh_model_;
+  std::unique_ptr<DeviceModel> refresh_device_model_;
+  AnimationVar refresh_animation_var_;
+  MixValue<glm::vec4> background_color_;
+  DeviceModel *background_device_model_;
+  AnimationVar background_animation_var_;
+  int32_t program_transformation_uniform_location_;
+  std::vector<uint8_t> *game_buffer_;
+};
+
+}  // namespace life_demo

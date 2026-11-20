@@ -24,7 +24,7 @@
 
 坐标原点在画布中心，x 向右、y 向下，合法范围为 [-8192,8191]。重置和随机化沿用原生确认流程，工具返回等待确认而不是假称操作已经完成。
 
-共享工具校验位于 `mobile/AgentTools.h`；两端命令分别进入 iOS 的 LongMarchRenderQueue 和鸿蒙 Host 命令队列，再调用 LongMarch `demo/gol` 的语义控制接口。没有给 RHI 添加 Agent 专用抽象。
+共享工具校验位于 `mobile/AgentTools.h`；两端命令分别进入 iOS 的 LongMarchRenderQueue 和鸿蒙 Host 命令队列，再调用 App `game` 的语义控制接口。没有给 RHI 添加 Agent 专用抽象。
 
 ## 调度与限制
 

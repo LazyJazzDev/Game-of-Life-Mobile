@@ -4,7 +4,7 @@
 #include <iostream>
 
 #include "DemoSession.h"
-#include "demo/gol/gpu/tiled_life.h"
+#include "game/gpu/tiled_life.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
@@ -19,7 +19,7 @@ int main(int argc, char **argv) {
     DemoSession session(argv[1], argc > 3 && std::string(argv[3]) == "prepare");
     session.Render();
     // Prepare/replay the portable sparse path as well as the detected fast path.
-    // HarmonyOS consumes this same offline bundle on devices without subgroup vote.
+    // iOS may need the portable path; HarmonyOS prepares its own Vulkan bundle.
     if (argc > 4) {
       std::ifstream input(argv[4]);
       const std::string source{std::istreambuf_iterator<char>(input), {}};

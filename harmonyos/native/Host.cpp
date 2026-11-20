@@ -242,7 +242,9 @@ void Host::Execute(const std::string &json) {
     if (!ready_)
       throw std::runtime_error("Resources are still being prepared");
     // The app only reads the SPIR-V prepared offline (prepare_resources.py).
-    grassland::rhi::ConfigureShaderCache({resources_ / "shaders", true, false});
+    if (!grassland::rhi::ConfigureShaderCache(
+            {resources_ / "shaders", true, false, grassland::rhi::ShaderTargetPlatform::OHOS}))
+      throw std::runtime_error("Cannot configure shader cache");
     game_ = std::make_unique<DesktopGameSession>(grassland::rhi::BACKEND_API_VULKAN);
     // Agent templates are user-authored; no bundled construction library.
     game_->EnableNativeSizeControls();

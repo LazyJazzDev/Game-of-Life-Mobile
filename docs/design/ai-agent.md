@@ -97,9 +97,9 @@ flowchart LR
 - `harmonyos/native/Host.h`、`Host.cpp`：JSON 命令入口、队列和独立渲染线程。
 - `ios/demos/DemoBridge.h`、`DemoBridge.mm`：原生桥接与 LongMarchRenderQueue。
 - 两端 `DesktopGameSession`：宿主操作、存档和原生确认桥接。
-- `LongMarch/demo/gol/game_of_life_gui.h`：共享应用状态与控制逻辑。
-- `LongMarch/demo/gol/gpu/tiled_life.h`：GPU 分块演化、休眠块、上传、填充及单格修改。
-- `LongMarch/demo/gol/patterns/library.json`：736 个内置结构。
+- `game/game_of_life_gui.h`：共享应用状态与控制逻辑。
+- `game/gpu/tiled_life.h`：GPU 分块演化、休眠块、上传、填充及单格修改。
+- `game/patterns/library.json`：736 个内置结构。
 
 主要新增工作：
 
@@ -109,7 +109,7 @@ flowchart LR
 4. 增加 revision、原子编辑、幂等操作及撤销记录。
 5. 统一两端协议、工具参数验证与错误语义。
 
-这些改动主要属于应用和 `demo/gol` 层，初期不需要扩展 RHI 抽象。需要修改共享模拟接口时再为 LongMarch 分出独立功能分支，仍不合入其主线。
+这些改动主要属于应用和 `game` 层，初期不需要扩展 RHI 抽象。共享模拟接口属于 App 仓库；LongMarch 仅维护通用 RHI 和平台适配。
 
 ## 结构设计工作流
 

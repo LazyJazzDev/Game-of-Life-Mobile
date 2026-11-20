@@ -76,8 +76,6 @@ bool Surface::Initialize() {
     VkSemaphoreCreateInfo semaphore{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     if (!Check(vkCreateSemaphore(device, &semaphore, nullptr, &frame.acquired), "Acquire semaphore"))
       return false;
-    if (!Check(vkCreateSemaphore(device, &semaphore, nullptr, &frame.blitted), "Blit semaphore"))
-      return false;
     VkFenceCreateInfo fence{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     fence.flags = VK_FENCE_CREATE_SIGNALED_BIT;
     if (!Check(vkCreateFence(device, &fence, nullptr, &frame.done), "Presentation fence"))
@@ -96,8 +94,6 @@ Surface::~Surface() {
       vkDestroyFence(core_->NativeDevice(), frame.done, nullptr);
     if (frame.acquired)
       vkDestroySemaphore(core_->NativeDevice(), frame.acquired, nullptr);
-    if (frame.blitted)
-      vkDestroySemaphore(core_->NativeDevice(), frame.blitted, nullptr);
   }
   if (command_pool_)
     vkDestroyCommandPool(core_->NativeDevice(), command_pool_, nullptr);
@@ -106,6 +102,10 @@ Surface::~Surface() {
 }
 
 void Surface::ReleaseSwapchain() {
+  for (auto semaphore : presented_)
+    if (semaphore)
+      vkDestroySemaphore(core_->NativeDevice(), semaphore, nullptr);
+  presented_.clear();
   if (swapchain_)
     vkDestroySwapchainKHR(core_->NativeDevice(), swapchain_, nullptr);
   swapchain_ = VK_NULL_HANDLE;
@@ -113,6 +113,8 @@ void Surface::ReleaseSwapchain() {
 }
 
 bool Surface::Resize(uint32_t width, uint32_t height) {
+  if (poisoned_)
+    return Fail("Presentation failed; recreate the surface before reuse");
   error_.clear();
   if (!width || !height)
     return true;
@@ -190,10 +192,19 @@ bool Surface::Resize(uint32_t width, uint32_t height) {
   images_.resize(count);
   if (!Check(vkGetSwapchainImagesKHR(device, swapchain_, &count, images_.data()), "Swapchain images"))
     return false;
+  presented_.resize(count, VK_NULL_HANDLE);
+  VkSemaphoreCreateInfo semaphore{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+  for (auto &ready : presented_)
+    if (!Check(vkCreateSemaphore(device, &semaphore, nullptr, &ready), "Present semaphore")) {
+      ReleaseSwapchain();
+      return false;
+    }
   return true;
 }
 
 bool Surface::Present(rhi::IImage *source) {
+  if (poisoned_)
+    return Fail("Presentation failed; recreate the surface before reuse");
   error_.clear();
   if (!swapchain_ || !source)
     return false;
@@ -218,8 +229,9 @@ bool Surface::Present(rhi::IImage *source) {
   if (acquire != VK_SUBOPTIMAL_KHR)
     if (!Check(acquire, "Acquire display image"))
       return false;
-  if (!Check(vkResetFences(device, 1, &frame.done), "Reset presentation fence"))
-    return false;
+  // Any failure after acquisition leaves binary semaphore/image ownership
+  // uncertain. Stop reuse, including waits on a fence whose submit failed.
+  poisoned_ = true;
   frame_ = (frame_ + 1) % kFramesInFlight;
   auto size = source->GetDesc();
   const double scale = std::min(double(extent_.width) / size.width, double(extent_.height) / size.height);
@@ -286,7 +298,9 @@ bool Surface::Present(rhi::IImage *source) {
     submit.commandBufferCount = 1;
     submit.pCommandBuffers = &cmd;
     submit.signalSemaphoreCount = 1;
-    submit.pSignalSemaphores = &frame.blitted;
+    submit.pSignalSemaphores = &presented_[index];
+    if (!Check(vkResetFences(device, 1, &frame.done), "Reset presentation fence"))
+      return false;
     if (!Check(vkQueueSubmit(core_->GetNativeQueue(rhi::QUEUE_TYPE_MAIN)->NativeQueue(), 1, &submit, frame.done),
                "Submit presentation"))
       return false;
@@ -294,11 +308,13 @@ bool Surface::Present(rhi::IImage *source) {
   VkPresentInfoKHR info{};
   info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   info.waitSemaphoreCount = 1;
-  info.pWaitSemaphores = &frame.blitted;
+  info.pWaitSemaphores = &presented_[index];
   info.swapchainCount = 1;
   info.pSwapchains = &swapchain_;
   info.pImageIndices = &index;
   VkResult result = vkQueuePresentKHR(core_->GetNativeQueue(rhi::QUEUE_TYPE_MAIN)->NativeQueue(), &info);
+  if (result == VK_SUCCESS || result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+    poisoned_ = false;
   if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
     vkDeviceWaitIdle(core_->NativeDevice());
     ReleaseSwapchain();

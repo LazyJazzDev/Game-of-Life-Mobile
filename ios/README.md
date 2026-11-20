@@ -1,7 +1,6 @@
 # Game of Life for iOS and iPadOS
 
-The SwiftUI app hosts the desktop Game of Life UI from the LongMarch submodule
-(`LongMarch/demo/gol`) in a Metal view, on the LongMarch RHI and its
+The SwiftUI app hosts the shared App-owned Game of Life UI (`game`) in a Metal view, on the LongMarch RHI and its
 Metal backend. Bundle `net.lazyjazz.gameoflife`, version 1.0.2 (build 5), iOS 18+,
 iPhone and iPad.
 
@@ -77,9 +76,9 @@ exactly the entries the game reads, together with the pattern library.
 
 ```sh
 cmake -S ios -B out/ios-prepare -G Ninja -DCMAKE_BUILD_TYPE=Release -DGOL_PREPARE=ON -DGOL_APP=OFF
-cmake --build out/ios-prepare --target gol_check
+cmake --build out/ios-prepare --target gol_check gol_vulkan_shaders
 cmake -S ios -B out/ios-replay -G Ninja -DCMAKE_BUILD_TYPE=Release -DGOL_APP=OFF
-cmake --build out/ios-replay --target gol_check gol_games_check
+cmake --build out/ios-replay --target gol_check gol_games_check gol_vulkan_shaders
 python3 ios/prepare_resources.py --prepare out/ios-prepare/gol_check \
   --checker out/ios-replay/gol_check --output out/ios/GameResources
 out/ios-replay/gol_games_check out/ios/GameResources
@@ -87,8 +86,8 @@ out/ios-replay/gol_games_check out/ios/GameResources
 
 The output refuses to overwrite an existing folder. Regenerate it after updating
 the LongMarch submodule or changing any game shader: the cache keys include the
-shader sources. Both SPIR-V and Metal entries are kept, so the same folder is the
-source of the HarmonyOS bundle.
+shader sources, RHI ABI and target platform. This folder contains iOS shaders;
+HarmonyOS compiles and replays its own Vulkan bundle using `gol_vulkan_shaders`.
 
 ## Simulator
 

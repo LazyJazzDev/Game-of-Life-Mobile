@@ -5,12 +5,12 @@
 #include <iostream>
 #include <thread>
 
-#include "demo/gol/application/listener.h"
-#include "demo/gol/cells_pattern.h"
-#include "demo/gol/game_of_life_gui.h"
-#include "demo/gol/gpu/tiled_life_storage.h"
-#include "demo/gol/simulation_clock.h"
 #include "demos/DemoSession.h"
+#include "game/application/listener.h"
+#include "game/cells_pattern.h"
+#include "game/game_of_life_gui.h"
+#include "game/gpu/tiled_life_storage.h"
+#include "game/simulation_clock.h"
 #include "grassland/rhi/shader_cache.h"
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -112,7 +112,14 @@ int main(int argc, char **argv) {
     {
       DemoSession game(argv[1]);
       game.Resize(640, 800);
-      Settle(game);
+      // C2 contrast intentionally keeps a paused view awake for two seconds.
+      // Wait for real idle, with a bound that still detects perpetual redraw.
+      for (int i = 0; i < 180; ++i) {
+        game.Render();
+        if (std::isinf(game.Game()->NextFrameDelay()))
+          break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+      }
       Check(std::isinf(game.Game()->NextFrameDelay()), "Settled game still requests continuous frames");
       auto before = Pixels(game);
       Check(*std::max_element(before.begin(), before.end()) > 200, "Shared UI produced no visible geometry");

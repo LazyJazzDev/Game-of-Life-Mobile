@@ -1,0 +1,44 @@
+#pragma once
+
+#include "application/animation_var.h"
+#include "application/button.h"
+#include "application/model.h"
+
+namespace life_demo {
+
+class PausePlayButton : public Button {
+ public:
+  PausePlayButton(Application *app, float left, float top, float right, float bottom, DeviceModel *device_model);
+
+  void Update(float t);
+
+  void Draw();
+
+  [[nodiscard]] bool IsPlaying() const;
+
+  void SetPlaying(bool playing);
+
+  bool IsAnimating() const {
+    return !background_animation_var_.IsFinished() || morph_ != (is_playing_ ? 1.f : 0.f) || morph_velocity_ != 0;
+  }
+
+ private:
+  void OnResize() override;
+
+  void OnClick() override;
+
+  void OnStateChange(int state) override;
+
+  void ResizeModel();
+
+  std::unique_ptr<MixModel> pause_play_model_;
+  std::unique_ptr<DeviceModel> pause_play_device_model_;
+  float morph_{0.0f};
+  float morph_velocity_{0.0f};
+  MixValue<glm::vec4> background_color_;
+  DeviceModel *background_device_model_;
+  AnimationVar background_animation_var_;
+  bool is_playing_{false};
+};
+
+}  // namespace life_demo

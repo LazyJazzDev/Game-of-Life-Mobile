@@ -17,7 +17,8 @@ class DemoSession {
   std::string AgentCommand(const std::string &json) {
     // A serial GCD queue can migrate between OS threads. Rebind the thread-local
     // offline cache before lazily creating research-canvas GPU resources.
-    grassland::rhi::ConfigureShaderCache(shader_cache_);
+    if (!grassland::rhi::ConfigureShaderCache(shader_cache_))
+      return R"({"ok":false,"error":"Cannot configure shader cache"})";
     return game_->AgentCommand(json);
   }
 

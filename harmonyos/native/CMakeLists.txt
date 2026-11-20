@@ -18,24 +18,14 @@ if(NOT EXISTS "${LONGMARCH_HEADERS}/glm/glm.hpp" OR NOT EXISTS "${LONGMARCH_HEAD
 endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
-# RHI Vulkan backend; native ArkUI owns the window and presentation.
-file(GLOB UTIL CONFIGURE_DEPENDS "${ROOT}/code/grassland/util/*.cpp")
-file(GLOB RHI CONFIGURE_DEPENDS "${ROOT}/code/grassland/rhi/*.cpp" "${ROOT}/code/grassland/rhi/backend/*.cpp")
-list(FILTER RHI EXCLUDE REGEX "/backend_window.*\\.cpp$")
-file(GLOB BACKEND CONFIGURE_DEPENDS "${ROOT}/code/grassland/rhi/backend/vulkan/*.cpp")
-list(FILTER BACKEND EXCLUDE REGEX "/vulkan_window\\.cpp$")
-add_library(gol_engine STATIC ${UTIL} ${RHI} ${BACKEND}
-  "${ROOT}/code/grassland/math/math_mesh.cxx" "${mikktspace_SOURCE_DIR}/mikktspace.c"
-  "${ROOT}/demo/gol/game_of_life_lib/game_of_life_lib.cpp")
-target_include_directories(gol_engine PUBLIC "${ROOT}/code" "${ROOT}" "${CMAKE_CURRENT_SOURCE_DIR}"
-  "${LONGMARCH_HEADERS}" "${LONGMARCH_HEADERS}/eigen3" "${LONGMARCH_HEADERS}/stb" "${mikktspace_SOURCE_DIR}")
-target_compile_definitions(gol_engine PUBLIC LONGMARCH_VULKAN_ENABLED LONGMARCH_VMA_ENABLED LONGMARCH_HEADLESS
-  FMT_HEADER_ONLY NDEBUG LONGMARCH_ASSETS_DIR="")
-# The app loads SPIR-V prepared offline; Slang is never linked.
-target_compile_definitions(gol_engine PRIVATE LONGMARCH_OFFLINE_SHADERS)
-target_link_libraries(gol_engine PUBLIC vulkan)
+set(GOL_SOURCE "${GOL_ROOT}/game")
+set(LONGMARCH_OFFLINE_SHADERS ON)
+add_subdirectory("${LONGMARCH_ROOT}/cmake/mobile" longmarch-mobile)
+add_library(gol_engine STATIC "${GOL_SOURCE}/game_of_life_lib/game_of_life_lib.cpp")
+target_link_libraries(gol_engine PUBLIC LongMarch::Mobile)
+target_include_directories(gol_engine PUBLIC "${GOL_ROOT}" "${CMAKE_CURRENT_SOURCE_DIR}" "${LONGMARCH_HEADERS}/stb")
+target_compile_definitions(gol_engine PUBLIC NDEBUG LONGMARCH_HEADLESS)
 
-# Slang sources are embedded only to reproduce the shader cache request keys.
 function(embed_shaders target directory output)
   file(GLOB_RECURSE shaders CONFIGURE_DEPENDS "${directory}/*.slang")
   get_filename_component(parent "${output}" DIRECTORY)
@@ -46,14 +36,14 @@ function(embed_shaders target directory output)
   target_sources(${target} PRIVATE "${output}")
 endfunction()
 # The desktop Game of Life UI, hosted in the native window.
-file(GLOB_RECURSE gol_sources CONFIGURE_DEPENDS "${ROOT}/demo/gol/*.cpp")
+file(GLOB_RECURSE gol_sources CONFIGURE_DEPENDS "${GOL_SOURCE}/*.cpp")
 list(FILTER gol_sources EXCLUDE REGEX "/main\\.cpp$|/game_of_life_lib/")
 add_library(gol_ui STATIC ${gol_sources} game/DesktopGameSession.cpp game/image_write.cpp)
 target_link_libraries(gol_ui PUBLIC gol_engine freetype z)
-target_include_directories(gol_ui PRIVATE "${ROOT}/demo/gol" "${ROOT}/demo/gol/game_of_life_lib")
+target_include_directories(gol_ui PRIVATE "${GOL_SOURCE}" "${GOL_SOURCE}/game_of_life_lib")
 target_compile_definitions(gol_ui PRIVATE LONGMARCH_HOSTED_GAMES GLFW_INCLUDE_NONE)
-embed_shaders(gol_ui "${ROOT}/demo/gol" "${CMAKE_CURRENT_BINARY_DIR}/game_gol/built_in_shaders.inl")
-set_source_files_properties("${ROOT}/demo/gol/application/application.cpp" PROPERTIES
+embed_shaders(gol_ui "${GOL_SOURCE}" "${CMAKE_CURRENT_BINARY_DIR}/game_gol/built_in_shaders.inl")
+set_source_files_properties("${GOL_SOURCE}/application/application.cpp" PROPERTIES
   INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}/game_gol")
 
 add_library(gameoflife SHARED Bridge.cpp Host.cpp Surface.cpp)

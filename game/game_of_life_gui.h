@@ -1,0 +1,247 @@
+#pragma once
+#include "application/animation_var.h"
+#include "application/application.h"
+#include "application/model.h"
+#include "boundary_toggle_button.h"
+#include "cell_grid.h"
+#include "file_button.h"
+#include "gpu/tiled_life.h"
+#include "grid_detail.h"
+#include "grid_size.h"
+#include "grid_view.h"
+#include "pause_play_button.h"
+#include "randomize_button.h"
+#include "refresh_button.h"
+#include "simulation_clock.h"
+#include "size_slider.h"
+#include "speed_toggle_button.h"
+
+namespace life_demo {
+
+class GameOfLife : public Application {
+ public:
+  GameOfLife(const char *title,
+             int width,
+             int height,
+             int cell_grid_width,
+             int cell_grid_height,
+             rhi::BackendAPI api,
+             bool hosted = false);
+
+  ~GameOfLife() override;
+
+  void EnableTiledSimulation() {
+    tiled_enabled_ = true;
+  }
+
+  // Called only on the owning render thread. Bounded prototype agent controls.
+  struct AgentState {
+    bool playing;
+    int speed;
+    bool periodic;
+    float zoom;
+  };
+
+  AgentState GetAgentState() const;
+  bool AgentControl(const std::string &action, double value, double x, double y);
+  bool AgentEdit(const std::vector<glm::ivec3> &cells);
+  // One validated, render-thread batch; rectangles are x/y/width/height.
+  bool AgentStamp(const std::vector<glm::ivec4> &rectangles,
+                  const std::vector<glm::ivec2> &alive,
+                  const std::string &mode);
+  bool AgentFit(int x, int y, int width, int height);
+  bool AgentPreview(const std::vector<glm::ivec2> &cells, int width, int height);
+  void EndAgentPreview();
+  bool AgentRegionSummary(int x, int y, int width, int height, uint64_t &population, uint64_t &hash);
+  bool AgentRead(int x, int y, int width, int height, std::vector<glm::ivec2> &alive);
+
+  double NextFrameDelay() const override;
+  void SetIconOrientation(float radians);
+  void SetBottomControlInset(float height_fraction);
+  // The host's left, top and right safe areas (a notch, Dynamic Island or camera
+  // hole) as fractions of the window width, height and width. Until set, the
+  // controls keep a fixed corner gap.
+  void SetCutoutInsets(float left, float top, float right);
+  // Caps the short edge that sizes controls, so large screens keep finger-sized controls.
+  void SetControlExtentLimit(float height_fraction);
+  // Host-selected icon size in framebuffer pixels, independent of window extent.
+  // Zero restores proportional desktop sizing. Small windows may shrink to fit.
+  void SetControlPixelSize(float pixels);
+  // Precise host occlusions (normalized x/y/width/height, including safety margins).
+  // An empty list still enables local avoidance instead of whole-edge safe areas.
+  void SetControlOcclusions(const std::vector<glm::vec4> &regions);
+  void EnableNativeSizeControls();
+  glm::ivec2 TakeSizeControlRequest();
+  // A size slider's rectangle as fractions of the framebuffer, for anchoring a
+  // native picker on it (axis 1: width, 2: height).
+  glm::vec4 SizeControlBounds(int axis) const;
+  void SetGridDimension(int axis, int value);
+
+  void ResetFrameClock() {
+    last_frame_time_ = last_simulation_time_ = grassland::GetTimeSeconds();
+  }
+
+  void ResetAnimationClock() {
+    const auto now = grassland::GetTimeSeconds();
+    // A new interaction after a timed sleep starts its animation now. Do not
+    // reset on every drag event or starve animations with high-rate input.
+    if (now - last_frame_time_ > 1.0 / 30.0)
+      last_frame_time_ = now;
+  }
+
+  // File pickers are asynchronous in native hosts. Buttons and feedback stay shared.
+  int HostedFileRequest() const {
+    return hosted_file_action_;
+  }
+
+  // Native hosts confirm destructive actions before the grid is changed.
+  void EnableNativeConfirmation() {
+    native_confirmation_ = true;
+  }
+
+  int ConfirmationRequest() const {
+    return confirmation_request_;
+  }
+
+  void CompleteConfirmation(bool accepted);
+  std::string SaveSession(const std::string &path);
+  std::string RestoreSession(const std::string &path);
+
+  std::string CompleteHostedFile(const std::string &path);
+
+  // Fills the grid with random live cells, each alive with the given probability.
+  void RandomizeCells(float density, uint32_t seed);
+
+  // Requests a random initial grid; applied when the cells are created.
+  void SetRandomInitialCells(float density, uint32_t seed) {
+    random_density_ = density;
+    random_seed_ = seed;
+  }
+
+  void SetInitialCells(std::vector<uint8_t> cells);
+
+  void SetInitialPlaying(bool playing) {
+    initial_playing_ = playing;
+  }
+
+ private:
+  bool PrepareScene(rhi::ICommandContext *commands) override;
+  void QueueCenteredPattern();
+  std::string SaveTiledState(const std::string &path);
+  int LoadTiledState(const std::string &path, std::string &error);
+  void CustomOnInit() override;
+  void CustomOnUpdate() override;
+  void CustomOnClose() override;
+  void OnFramebufferResize() override;
+
+  void OnWindowSize();
+
+  void InitCells(int width, int height);
+  void LayoutCells();
+  void DrawCellGrid();
+  void DrawGridRuler();
+  void ResizeGrid(int width, int height);
+  glm::vec2 CursorPosition() const;
+  glm::vec2 FramePosition(glm::dvec2 position) const;
+  bool CursorInGrid() const;
+  void ZoomGrid(float factor);
+  void ScrollGrid(double x, double y);
+  // Ends a left-drag pan and resumes cell input.
+  void EndDragPan();
+  enum class FileAction { kNone, kOpen, kSave };
+  void RequestFileAction(FileAction action);
+  void ProcessFileAction();
+
+  void RequestDestructiveAction(int action);
+  void ApplyDestructiveAction(int action);
+  bool native_confirmation_{};
+  int confirmation_request_{};
+  bool confirmation_was_playing_{};
+  int hosted_file_action_{};
+  int hosted_size_axis_{};
+  bool hosted_was_playing_{};
+  SimulationClock simulation_clock_;
+  AnimationVar icon_rotation_{0.0f, AnimationStyle::kPower2};
+  GridView grid_view_;
+  float agent_view_elapsed_{0.35f};
+  float agent_view_start_zoom_{1.0f}, agent_view_target_zoom_{1.0f};
+  glm::vec2 agent_view_start_center_{}, agent_view_target_center_{};
+  GridRulerTiming ruler_timing_;
+  std::unique_ptr<SizeSlider> width_slider_;
+  std::unique_ptr<SizeSlider> height_slider_;
+  int requested_width_{};
+  int requested_height_{};
+  bool sidebar_{true};
+  float bottom_control_inset_{};
+  glm::vec3 cutout_insets_{-1.0f};
+  bool precise_occlusions_{};
+  std::vector<glm::vec4> control_occlusions_;
+  float control_extent_limit_{};
+  float control_pixel_size_{};
+  bool sliders_were_dragging_{false};
+  uint32_t magnify_callback_{};
+  uint32_t scroll_callback_{};
+  uint32_t key_callback_{};
+  uint32_t pan_button_callback_{};
+  uint32_t pan_move_callback_{};
+  uint32_t pan_focus_callback_{};
+  bool panning_{false};
+  glm::vec2 pan_cursor_{0.0f};
+  // A left press on an enlarged grid, which becomes a pan once it moves.
+  bool drag_pending_{false};
+  bool drag_panning_{false};
+  glm::vec2 drag_start_{0.0f};
+
+  std::unique_ptr<PausePlayButton> pause_play_button_;
+  std::unique_ptr<SpeedToggleButton> speed_toggle_button_;
+  std::unique_ptr<BoundaryToggleButton> boundary_button_;
+  std::unique_ptr<RefreshButton> refresh_button_;
+  std::unique_ptr<RandomizeButton> randomize_button_;
+  std::unique_ptr<FileButton> open_button_;
+  std::unique_ptr<FileButton> save_button_;
+  FileAction file_action_{FileAction::kNone};
+  float file_action_delay_{0.0f};
+  std::string file_path_{"life.cells"};
+
+  std::optional<DeviceModel> white_icon_model;
+  std::optional<DeviceModel> white_rect_model;
+  std::array<std::unique_ptr<DeviceModel>, 11> ruler_glyphs_;
+
+  bool tiled_enabled_{false};
+  bool tiled_ready_{false};
+  TiledLife tiled_life_;
+  std::unique_ptr<TiledLife> agent_preview_;
+  bool agent_preview_active_{};
+  GridView agent_main_view_;
+  std::vector<uint32_t> agent_preview_pending_;
+  uint32_t pending_steps_{};
+  int pending_fill_{-1};
+  std::vector<glm::uvec2> pending_toggles_;
+  std::vector<uint32_t> pending_pattern_;
+  std::vector<uint8_t> cell_grid_;
+  std::vector<uint8_t> initial_cells_;
+  std::unique_ptr<CellGrid> cell_input_;
+  bool cells_animating_{false};
+  float time_total{0.0};
+  double last_frame_time_{};
+  float contrast_elapsed_{};
+  double last_simulation_time_{};
+  float ui_scale_{1.0};
+  float random_density_{0.0f};
+  uint32_t random_seed_{0};
+  bool initial_playing_{false};
+  int cell_grid_width_{};
+  int cell_grid_height_{};
+
+  float panel_left_{};
+  float panel_right_{};
+  float panel_top_{};
+  float panel_bottom_{};
+
+  float playground_left_{};
+  float playground_right_{};
+  float playground_top_{};
+  float playground_bottom_{};
+};
+
+}  // namespace life_demo

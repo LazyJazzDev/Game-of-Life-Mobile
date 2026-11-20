@@ -8,7 +8,8 @@ using namespace grassland::rhi;
 DemoSession::DemoSession(const std::filesystem::path &resources, bool prepare, BackendAPI backend) {
   // A prepare build compiles Slang and writes the cache; apps only read it.
   shader_cache_ = {resources / "shaders", !prepare, backend == BACKEND_API_METAL};
-  ConfigureShaderCache(shader_cache_);
+  if (!ConfigureShaderCache(shader_cache_))
+    throw std::runtime_error("Cannot configure shader cache");
   game_ = std::make_unique<DesktopGameSession>(backend);
 }
 

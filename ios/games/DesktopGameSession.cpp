@@ -3,7 +3,7 @@
 #include <cstdlib>
 
 #include "../../mobile/AgentTools.h"
-#include "demo/gol/game_of_life_gui.h"
+#include "game/game_of_life_gui.h"
 
 DesktopGameSession::DesktopGameSession(grassland::rhi::BackendAPI backend) {
   const char *size = std::getenv("LONGMARCH_SMOKE_GOL_SIZE");

@@ -7,7 +7,7 @@
 
 #include "AgentTemplates.h"
 #include "MetacellGuide.h"
-#include "demo/gol/game_of_life_gui.h"
+#include "game/game_of_life_gui.h"
 
 namespace mobile_agent {
 inline std::string Execute(life_demo::GameOfLife &game,

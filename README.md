@@ -37,4 +37,4 @@ Install the shared host dependencies once (Apple Silicon example):
 The app code is MIT licensed (`LICENSE`). The built-in patterns are adapted from
 the Life Lexicon by Stephen A. Silver et al. and licensed under
 [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)
-(`LongMarch/demo/gol/patterns/LICENSE.md`).
+(`game/patterns/LICENSE.md`).

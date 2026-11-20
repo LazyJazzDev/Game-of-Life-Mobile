@@ -1,14 +1,14 @@
 # Game of Life for HarmonyOS
 
 The 生命游戏 / Game of Life app (`net.lazyjazz.gameoflife`): an ArkUI page over the
-desktop Game of Life from LongMarch (`../LongMarch/demo/gol`), rendered with
+shared App-owned Game of Life (`../game`), rendered with
 LongMarch RHI's Vulkan backend into an XComponent surface.
 
 ## Layout
 
 | Path | Purpose |
 |---|---|
-| `AppScope/` | Bundle name, version, app name (en/zh) and the layered icon (`demo/gol/tools/app_icon.py`) |
+| `AppScope/` | Bundle name, version, app name (en/zh) and the layered icon (`game/tools/app_icon.py`) |
 | `entry/src/main/ets/entryability/EntryAbility.ets` | Fullscreen window, native initialization, foreground/background |
 | `entry/src/main/ets/pages/Index.ets` | Game page: touch and pinch input, fixed-orientation icons, grid-size popover, pattern library |
 | `entry/src/main/resources/` | Strings (en/zh) and the bundled game resources (`rawfile/Resources`, generated) |
@@ -52,13 +52,15 @@ or a directory named by `LONGMARCH_MOBILE_DEPS`. Then stage the game's prepared
 resources, which hold the pattern library and the SPIR-V the game requests:
 
 ```sh
-python3 harmonyos/prepare_resources.py --source <GameOfLifeResources>
+python3 harmonyos/prepare_resources.py --source <GameOfLifeResources> \
+  --compiler out/ios-prepare/gol_vulkan_shaders \
+  --checker out/ios-replay/gol_vulkan_shaders
 sh harmonyos/build_hap.sh
 ```
 
-The source is a game resource folder prepared by LongMarch's iOS tools
-(`prepare_game_resources.py`); only its `slang-*` SPIR-V entries are staged. A
-staged bundle is tied to the Slang compiler that prepared it.
+Only patterns are copied from the source resource folder. The host
+`gol_vulkan_shaders` tool independently compiles and replays the OHOS Vulkan
+requests, using the shared App shader recipes. iOS cache entries are never reused.
 
 ## Signing
 
@@ -83,7 +85,7 @@ The package is written to `build/outputs/default/harmonyos-default-signed.app`.
 - Open and save start in the in-app pattern library (736 Life Lexicon patterns in
   folders, plus My Patterns); the system document picker is one link away.
 - Built-in patterns are adapted from the Life Lexicon by Stephen A. Silver et al.,
-  licensed under CC BY-SA 3.0 (`../LongMarch/demo/gol/patterns/LICENSE.md`).
+  licensed under CC BY-SA 3.0 (`../game/patterns/LICENSE.md`).
 
 ## Privacy verification
 

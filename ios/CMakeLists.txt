@@ -24,75 +24,65 @@ if(NOT EXISTS "${GOL_HEADERS}/fmt/format.h" OR NOT EXISTS "${GOL_HEADERS}/eigen3
 endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
-# RHI core and native Metal backend, without desktop window/ImGui implementations.
-file(GLOB UTIL CONFIGURE_DEPENDS "${ROOT}/code/grassland/util/*.cpp")
-file(GLOB RHI CONFIGURE_DEPENDS "${ROOT}/code/grassland/rhi/*.cpp" "${ROOT}/code/grassland/rhi/backend/*.cpp")
-list(FILTER RHI EXCLUDE REGEX "/backend_window.*\\.cpp$")
-file(GLOB METAL CONFIGURE_DEPENDS "${ROOT}/code/grassland/rhi/backend/metal/*.cpp" "${ROOT}/code/grassland/rhi/backend/metal/*.mm")
-list(FILTER METAL EXCLUDE REGEX "/metal_window\\.(cpp|mm)$")
-add_library(gol_engine STATIC ${UTIL} ${RHI} ${METAL}
-  "${ROOT}/code/grassland/math/math_mesh.cxx" "${mikktspace_SOURCE_DIR}/mikktspace.c"
-  "${ROOT}/demo/gol/game_of_life_lib/game_of_life_lib.cpp")
-target_include_directories(gol_engine PUBLIC "${ROOT}/code" "${GOL_HEADERS}" "${GOL_HEADERS}/eigen3"
-  "${GOL_HEADERS}/stb" "${metal_cpp_SOURCE_DIR}" "${mikktspace_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}" "${ROOT}")
-target_compile_definitions(gol_engine PUBLIC LONGMARCH_METAL_ENABLED LONGMARCH_HEADLESS
-  FMT_HEADER_ONLY NDEBUG "$<$<NOT:$<COMPILE_LANGUAGE:Swift>>:LONGMARCH_ASSETS_DIR=\"\">")
-target_link_libraries(gol_engine PUBLIC "-framework Metal" "-framework Foundation" "-framework QuartzCore")
+set(GOL_SOURCE "${GOL_ROOT}/game")
+set(LONGMARCH_OFFLINE_SHADERS ON)
 if(GOL_PREPARE)
-  longmarch_mobile_compiler(gol_engine)
-  # Same exported SPIRV-Cross targets as the desktop Metal backend (LongMarch cmake/Metal.cmake).
-  foreach(part core glsl msl)
-    find_package(spirv_cross_${part} CONFIG REQUIRED HINTS ${_mobile_prefixes})
-  endforeach()
-  target_link_libraries(gol_engine PUBLIC spirv-cross-msl spirv-cross-glsl spirv-cross-core)
-else()
-  target_compile_definitions(gol_engine PRIVATE LONGMARCH_OFFLINE_SHADERS)
+  set(LONGMARCH_OFFLINE_SHADERS OFF)
+  list(APPEND CMAKE_PREFIX_PATH ${_mobile_prefixes})
 endif()
+add_subdirectory("${LONGMARCH_ROOT}/cmake/mobile" longmarch-mobile)
+add_library(gol_engine STATIC "${GOL_SOURCE}/game_of_life_lib/game_of_life_lib.cpp")
+target_link_libraries(gol_engine PUBLIC LongMarch::Mobile)
+target_include_directories(gol_engine PUBLIC "${GOL_ROOT}" "${CMAKE_CURRENT_SOURCE_DIR}" "${GOL_HEADERS}/stb" "${metal_cpp_SOURCE_DIR}")
+target_compile_definitions(gol_engine PUBLIC NDEBUG LONGMARCH_HEADLESS)
 
 # The desktop Game of Life UI (geometry, controls, animation and its Slang) for a native host.
-file(GLOB_RECURSE gol_sources CONFIGURE_DEPENDS "${ROOT}/demo/gol/*.cpp")
+file(GLOB_RECURSE gol_sources CONFIGURE_DEPENDS "${GOL_SOURCE}/*.cpp")
 list(FILTER gol_sources EXCLUDE REGEX "/main\\.cpp$|/game_of_life_lib/")
 add_library(gol_ui STATIC ${gol_sources})
 target_link_libraries(gol_ui PUBLIC gol_engine freetype z)
-target_include_directories(gol_ui PRIVATE "${ROOT}/demo/gol" "${ROOT}/demo/gol/game_of_life_lib")
+target_include_directories(gol_ui PRIVATE "${GOL_SOURCE}" "${GOL_SOURCE}/game_of_life_lib")
 target_compile_definitions(gol_ui PRIVATE LONGMARCH_HOSTED_GAMES GLFW_INCLUDE_NONE)
 set(gol_generated "${CMAKE_CURRENT_BINARY_DIR}/game_gol")
 file(MAKE_DIRECTORY "${gol_generated}")
-file(GLOB_RECURSE gol_shaders CONFIGURE_DEPENDS "${ROOT}/demo/gol/*.slang")
+file(GLOB_RECURSE gol_shaders CONFIGURE_DEPENDS "${GOL_SOURCE}/*.slang")
 add_custom_command(OUTPUT "${gol_generated}/built_in_shaders.inl"
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/embed_shaders.py"
-    "${ROOT}/demo/gol" "${gol_generated}/built_in_shaders.inl"
+    "${GOL_SOURCE}" "${gol_generated}/built_in_shaders.inl"
   DEPENDS ${gol_shaders} embed_shaders.py VERBATIM)
 target_sources(gol_ui PRIVATE "${gol_generated}/built_in_shaders.inl")
-set_source_files_properties("${ROOT}/demo/gol/application/application.cpp" PROPERTIES
+set_source_files_properties("${GOL_SOURCE}/application/application.cpp" PROPERTIES
   INCLUDE_DIRECTORIES "${gol_generated}")
 
 # The window-independent host shared by the app and the host checks.
 add_library(gol_host STATIC demos/DemoSession.cpp games/DesktopGameSession.cpp games/image_write.cpp)
 target_link_libraries(gol_host PUBLIC gol_ui)
-target_include_directories(gol_host PRIVATE "${ROOT}/demo/gol/game_of_life_lib" "${ROOT}/demo/gol")
+target_include_directories(gol_host PRIVATE "${GOL_SOURCE}/game_of_life_lib" "${GOL_SOURCE}")
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
   # Host renderer: compiles the shaders (GOL_PREPARE=ON) or replays the cache.
+  add_executable(gol_vulkan_shaders ../mobile/prepare_vulkan_shaders.cpp)
+  target_link_libraries(gol_vulkan_shaders PRIVATE gol_ui)
+  target_include_directories(gol_vulkan_shaders PRIVATE "${GOL_SOURCE}")
   add_executable(gol_check demos/check.cpp)
   target_link_libraries(gol_check PRIVATE gol_host)
   if(GOL_PREPARE)
     add_executable(gol_tiled_check tests/tiled_life_check.cpp)
     target_link_libraries(gol_tiled_check PRIVATE gol_ui)
-    target_include_directories(gol_tiled_check PRIVATE "${ROOT}/demo/gol")
+    target_include_directories(gol_tiled_check PRIVATE "${GOL_SOURCE}")
     add_executable(gol_subgroup_check tests/subgroup_check.cpp)
     target_link_libraries(gol_subgroup_check PRIVATE gol_ui)
   endif()
   add_executable(gol_tiled_storage_check tests/tiled_storage_check.cpp)
   target_link_libraries(gol_tiled_storage_check PRIVATE gol_ui)
-  target_include_directories(gol_tiled_storage_check PRIVATE "${ROOT}/demo/gol")
+  target_include_directories(gol_tiled_storage_check PRIVATE "${GOL_SOURCE}")
   add_executable(gol_agent_templates_check tests/agent_templates_check.cpp)
   target_link_libraries(gol_agent_templates_check PRIVATE gol_host)
   add_executable(gol_agent_check tests/agent_check.cpp)
   target_link_libraries(gol_agent_check PRIVATE gol_host)
   add_executable(gol_games_check tests/games_check.cpp)
   target_link_libraries(gol_games_check PRIVATE gol_host)
-  target_include_directories(gol_games_check PRIVATE "${ROOT}/demo/gol" "${ROOT}/demo/gol/game_of_life_lib")
+  target_include_directories(gol_games_check PRIVATE "${GOL_SOURCE}" "${GOL_SOURCE}/game_of_life_lib")
 endif()
 
 if(GOL_APP AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
