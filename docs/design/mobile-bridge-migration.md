@@ -79,6 +79,11 @@ Evidence directory: `out/migration-mobile-bridge/` (local, not committed).
   existing two-second C2 contrast animation, retaining the idle assertion.
 - LongMarch shader-target test passed: fresh-thread default platform, OHOS macros,
   target isolation, conflicting configuration rejection, replay and corruption rejection.
+- Independent validation of final LongMarch commit `fae8a79c`: desktop RHI
+  regression selected 45 tests, 37 passed and 8 existing window-dependent cases
+  skipped. Triangle rebuilt with fresh caches and passed RGB/size readback, real
+  simulator drawable colors, pause/resume and destruction/recreation; missing
+  and corrupt bundles were rejected. Independent logs: `/tmp/mobile-bridge-ohos-*.log`.
 - Independent JS tests passed: research Life/playback and Harmony Agent, native
   bridge, file recovery, research lookup and privacy startup/hosted-policy paths.
 
